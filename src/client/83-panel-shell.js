@@ -1,11 +1,12 @@
 		// 新面板：量内容的实际跨度并把高度写回壳（内联 + !important）。
 		// 挂载时、以及**切换视图后**共用这一份 —— 两处的量法与上限完全一致，只是时机不同。
-		// 为什么开头先 removeProperty：切换视图时壳上还钉着**上一个视图**的高度，
-		// 不先清掉就永远量到旧值（新视图更高 → 白留滚动条；更矮 → 底部一片空白）。
-		// 挂载时本来就没有 inline height，removeProperty 是空操作 ⇒ 行为与改动前逐字相同。
-		function fitPanelHeight(el, anchorBottom) {
+		// `remeasure` = 需要**重新量**（切换视图）：先清掉壳上钉着的旧高度，否则永远量到旧值。
+		// ⚠️ 挂载/普通重渲染**绝不能**清高度：一旦清掉，`.gacha-cal-sched-body` 会瞬间没有溢出，
+		//    scrollTop 被浏览器夹到 0（= 用户看到的"滑到一半突然跳回顶部"），设回高度也不会回到原位置。
+		//    2026-11-01 用户报的跳顶就是这个：内联 ref 每次渲染重挂 → 每次都清高度 → 每次都被夹回 0。
+		function fitPanelHeight(el, anchorBottom, remeasure) {
 			if (!el) return;
-			el.style.removeProperty("height");
+			if (remeasure) el.style.removeProperty("height");
 			// 量**内容的实际跨度**（首个子元素顶边 → 末个子元素底边 + 视图内边距），而不是视图自身高度：
 			// 视图可能被上限/拉伸影响，"自身高度"不足以代表内容。
 			const inner = el.firstElementChild;
@@ -40,6 +41,9 @@
 			const triggerRef = (0, react.useRef)(null);
 			const popRef = (0, react.useRef)(null);
 			const [anchor, setAnchor] = (0, react.useState)();
+			// anchor 的最新值（ref 版）：稳定的 ref 回调 / rAF 里读它，避免闭包停在挂载那一刻。
+			const anchorRef = (0, react.useRef)(undefined);
+			anchorRef.current = anchor;
 
 			(0, react.useEffect)(() => {
 				const timer = window.setInterval(() => setNow(new Date()), 60000);
@@ -100,7 +104,8 @@
 				// 判定沿用组件里那一处（与 className / children 同一个 `s.newPanel === true`），不另立第二套。
 				if (s.newPanel !== true) { el.style.removeProperty("height"); return; }
 				// 量法/上限只有一份：fitPanelHeight（与挂载时的 ref 回调、切换视图后的复量共用）。
-				fitPanelHeight(el, anchor && typeof anchor.bottom === "number" ? anchor.bottom : void 0);
+				// 换视图 / 新旧面板切换时壳上可能钉着旧高度 ⇒ 这里允许重新量（挂载时清高度是空操作）
+				fitPanelHeight(el, anchor && typeof anchor.bottom === "number" ? anchor.bottom : void 0, true);
 				// 只写一次：不挂 ResizeObserver、也不做延迟复写 —— 观察被拉伸的元素、或绘制后再写一次，
 				// 都会再触发重排（用户观察到"刚点开翻不动、隔一会才正常"）。数据刷新后重新开合面板即可覆盖。
 			}, [open, s.newPanel]);
@@ -329,10 +334,23 @@
 				const run = () => {
 					if (!el || sRef.current.newPanel !== true) return;
 					const bottom = parseFloat(el.style.bottom);
-					fitPanelHeight(el, Number.isFinite(bottom) ? bottom : void 0);
+					fitPanelHeight(el, Number.isFinite(bottom) ? bottom : void 0, true);
 				};
 				window.requestAnimationFrame(run);
 				window.setTimeout(run, 120);
+			}, []);
+			// 面板壳的 ref：**必须是稳定身份**（useCallback []）。内联 ref 每次渲染都会 detach/attach，
+			// 于是"量高写回"会跟着 60 秒时钟 / 任何设置写入反复重跑；再叠加"先清高度"就是
+			// 用户 2026-11-01 报的「滑到一半突然跳回顶部」。现在：挂载时量一次，切视图由上面显式复量。
+			const setPopRef = (0, react.useCallback)((el) => {
+				popRef.current = el;
+				if (!el) return;
+				// 旧面板（.gacha-cal-pop，max-height:72vh）：不要任何 inline height（它靠 CSS 自己滚）。
+				if (sRef.current.newPanel !== true) { el.style.removeProperty("height"); return; }
+				const fit = () => fitPanelHeight(el, anchorRef.current && typeof anchorRef.current.bottom === "number" ? anchorRef.current.bottom : void 0, false);
+				fit();
+				window.requestAnimationFrame(fit);
+				window.setTimeout(fit, 300);
 			}, []);
 			const doRefresh = (0, react.useCallback)(async () => {
 				if (refreshLock.current) return;
@@ -540,20 +558,9 @@
 						]
 					}),
 					open && anchor !== void 0 ? (0, react_jsx_runtime.jsx)("div", {
-						ref: (el) => {
-							popRef.current = el;
-							if (!el) return;
-							// F4：与上面 effect 同一个判定 —— 量高写 inline height 只服务新面板；
-							// 旧面板（.gacha-cal-pop，max-height:72vh）必须回到"没有任何 inline height"的原状。
-							if (s.newPanel !== true) { el.style.removeProperty("height"); return; }
-							// 为什么不用 useEffect：本插件环境里 effect 未执行（实测 inline style 始终只有 left/bottom，
-							// 高度写不进去、面板就按内容撑到 2699）。ref 回调由 React 保证在挂载时调用，最稳。
-							// 量法/上限只有一份：fitPanelHeight（切换视图后的复量也走它）。
-							const fit = () => fitPanelHeight(el, anchor && typeof anchor.bottom === "number" ? anchor.bottom : void 0);
-							fit();
-							window.requestAnimationFrame(fit);
-							window.setTimeout(fit, 300);
-						},
+						// ⚠️ 必须用**稳定**的回调（setPopRef），不能写内联箭头函数：
+						// 内联 ref 每次渲染都会 detach/attach ⇒ 挂载时那次"量高"会反复重跑 ⇒ 滚动被夹回顶部。
+						ref: setPopRef,
 						// 新版要"撑满 + 不裁切"，旧版要"限高 + 滚动" —— 靠这个修饰类分开（见 styles/panel.css）
 						className: s.newPanel === true ? "gacha-cal-pop gacha-cal-pop--sched" : "gacha-cal-pop",
 						style: { left: anchor.left, bottom: anchor.bottom },

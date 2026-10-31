@@ -383,9 +383,41 @@
 		//     `end-ops.canmoe.com/api/v1/{creatives,notice}.json`（公告与广告），**没有**排期接口。
 		//   ⇒ 读 chunk 是唯一路径，优化只能做在这条路径上。
 		const CANMOE_CHUNK_CONCURRENCY = 6;
+		// 单个 chunk 的请求上限（毫秒）。完整流程是"页面 1 次 + 一轮 6 个 chunk"，整轮刷新只有 20 秒总期限：
+		// 只要其中有**一个** chunk 卡住（宿主代理自己的上限是 15 秒），这一轮就会被它拖过总期限 ⇒ 整条判超时。
+		// 6 秒足够（正常 chunk 40~80KB、实测 0.2~1 秒），超时就当这份抓不到、继续下一轮。
+		const CANMOE_CHUNK_TIMEOUT_MS = 6000;
+		// 上一次命中的数据 chunk（**进程内**缓存）。chunk 名带构建哈希，只有站点重新部署才会变。
+		// 为什么要有它：完整流程 7 个代理往返（实测 5~6 秒），而"启动时"那轮刷新要和其余 20+ 来源
+		// 抢浏览器的 6 条同源连接 ⇒ 终末地这条最重的请求链经常在 20 秒总期限前赶不完，用户看到
+		// 「卡池失败：超时」。命中后记下这块 URL，之后的刷新只发 **1 个请求**（≈1 秒）。
+		let canmoeDataChunkUrl = "";
+
+		// 给一个 promise 加超时（不取消底层请求：宿主代理本来也不理会 signal，超时只是"不再等它"）。
+		function canmoeWithTimeout(promise, ms) {
+			let timer = 0;
+			const timeout = new Promise((_, reject) => {
+				timer = coreEnv.timer.setTimeout(() => reject(new Error("canmoe-timeout")), ms);
+			});
+			return Promise.race([promise, timeout]).finally(() => coreEnv.timer.clearTimeout(timer));
+		}
 
 		async function fetchCanmoeEndfield(pageUrl, _signal, tz, now = nowMs()) {
 			const CANMOE_REF = "https://end.canmoe.com/";
+			// ① 快速路径：上次命中的 chunk 还在就直接用它（1 个请求）。失败 / 结构变了就回落完整流程。
+			//    ⚠️ d === null（结构在、但没有覆盖当前时刻的期次）也回落到完整流程：
+			//       站点刚换期时数据可能在**另一个** chunk 里，缓存不能作数。
+			if (canmoeDataChunkUrl) {
+				try {
+					const js = await canmoeWithTimeout(proxyFetchText(canmoeDataChunkUrl, CANMOE_REF), CANMOE_CHUNK_TIMEOUT_MS);
+					const d = currentFromCanmoe(js, now, tz);
+					if (d) {
+						const hover = canmoePoolHover(js, now, tz);
+						if (hover) d.bannerHover = hover;
+						return d;
+					}
+				} catch { /* 缓存 chunk 失效（重新部署 / 超时）→ 走完整流程 */ }
+			}
 			const html = await proxyFetchText(pageUrl, CANMOE_REF);
 			const chunks = nextJsChunkUrls(html, "BannerCalendar", pageUrl);
 			if (chunks.length === 0) throw new Error("canmoe-no-chunk");   // 页面拿到了但没有数据块链接 = 改版
@@ -394,10 +426,11 @@
 			let fetchedAny = false, sawStructure = false, lastErr = null;
 			for (let p = 0; p < ordered.length; p += CANMOE_CHUNK_CONCURRENCY) {
 				const wave = ordered.slice(p, p + CANMOE_CHUNK_CONCURRENCY);
-				// 一轮并发：失败**不** reject 整个 Promise.all（保持"单个失败 → 换下一个"的语义）
+				// 一轮并发：失败**不** reject 整个 Promise.all（保持"单个失败 → 换下一个"的语义）；
+				// 每个请求**各自带 6 秒上限**，一个卡住的 chunk 不会把整轮（以及整条来源）拖过 20 秒总期限。
 				const results = await Promise.all(wave.map(async (x) => {
 					try {
-						return { x, js: await proxyFetchText(x.url, CANMOE_REF) };
+						return { x, js: await canmoeWithTimeout(proxyFetchText(x.url, CANMOE_REF), CANMOE_CHUNK_TIMEOUT_MS) };
 					} catch (err) {
 						return { x, err };
 					}
@@ -409,14 +442,15 @@
 					const d = currentFromCanmoe(r.js, now, tz);
 					if (d === void 0) continue;      // 这份 chunk 里没有卡池结构 → 看下一份
 					sawStructure = true;
-					if (d) hits.push({ d, js: r.js, i: r.x.i });
+					if (d) hits.push({ d, js: r.js, i: r.x.i, url: r.x.url });
 				}
 				if (hits.length > 0) {
 					// 同轮多命中 → 取原始下标最小者（= 原串行实现会选中的那份）；早停：不再发下一轮
 					hits.sort((a, b) => a.i - b.i);
-					const { d, js } = hits[0];
+					const { d, js, url } = hits[0];
 					const hover = canmoePoolHover(js, now, tz);
 					if (hover) d.bannerHover = hover;
+					canmoeDataChunkUrl = url;   // ② 记下这块，下一次刷新走上面的快速路径
 					return d;
 				}
 			}

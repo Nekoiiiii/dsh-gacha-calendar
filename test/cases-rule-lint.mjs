@@ -509,22 +509,52 @@ export default async function run() {
 		check("完成 / 忽略默认收纳（两个开关初值 false，渲染以它们为条件）",
 			/const \[showDone, setShowDone\] = \(0, react\.useState\)\(false\)/.test(comp)
 			&& /const \[showIgnored, setShowIgnored\] = \(0, react\.useState\)\(false\)/.test(comp)
-			&& /showDone && markPlan\.done\.length/.test(comp)
-			&& /showIgnored && markPlan\.ignored\.length/.test(comp));
+			&& /mark === "done"\) return showDone/.test(comp)
+			&& /mark === "ignored"\) return showIgnored/.test(comp));
 		check("默认视图 = 清单（游戏表收进切换按钮里，用户要求默认看左上角列表）",
 			/const \[view, setView\] = \(0, react\.useState\)\("list"\)/.test(comp)
 			&& /view === "list" \?/.test(comp) && /children: "活动清单"/.test(comp) && /children: "游戏日历"/.test(comp));
 		check("清单按**每一条**展开（不再只收每格外显那一条）：cells 的全部条目摊平后排序",
 			/for \(const list of cells\.values\(\)\)[\s\S]{0,200}?out\.push\(\{ \.\.\.x, rowKey/.test(comp)
 			&& /out\.sort\(schedulePickItem\)/.test(comp));
+		// 2026-11-01 第二轮（用户要求）：展开后的置灰行**按原排序插回**，不再统一堆到末尾。
+		check("置灰行按原顺序插回：listRows 过滤 items（而不是 pending + 末尾拼 done/ignored）",
+			/const listRows = \(0, react\.useMemo\)\(\(\) => items\.filter\(/.test(comp)
+			&& /listRows\.map\(itemRow\)/.test(comp)
+			&& !/markPlan\.pending\.map\(itemRow\)/.test(comp)
+			&& !/gacha-cal-sched-sec/.test(comp));
+		// 悬停只看这一行：不再复用"同格所有并列池"的整段悬停文本。
+		check("清单行悬停用行内文本 scheduleRowHover（不再用整段 bannerHover）",
+			/title: scheduleRowHover\(x\)/.test(comp) && !/scheduleHoverText/.test(comp)
+			&& /function scheduleRowHover\(x\)/.test(comp));
+		// 剩余时间底色：24 小时内浅红、3 天内浅黄。
+		check("清单行带底色档位 data-bg（scheduleRemainBand）",
+			/"data-bg": scheduleRemainBand\(x\)/.test(comp)
+			&& /function scheduleRemainBand\(x\)/.test(comp)
+			&& /x\.remain <= SCHEDULE_DUE_MS\) return "1"/.test(comp)
+			&& /x\.remain <= SCHEDULE_SOON_MS\) return "2"/.test(comp));
+		// 滚动条：原来被藏掉（scrollbar-width:none），现在要有可拖动的可见滑块。
+		const styles = readStylesSource();
+		check("右侧滚动条可见且可拖动（scrollbar-width:thin + ::-webkit-scrollbar-thumb）",
+			!/scrollbar-width:none/.test(styles)
+			&& /\.gacha-cal-sched-body\{[^}]*scrollbar-width:thin/.test(styles)
+			&& /\.gacha-cal-sched-body::-webkit-scrollbar-thumb\{/.test(styles));
+		check("底色样式真的存在（data-bg=1 浅红 / data-bg=2 浅黄）",
+			/\.gacha-cal-sched-u\[data-bg="1"\]\{background:/.test(styles)
+			&& /\.gacha-cal-sched-u\[data-bg="2"\]\{background:/.test(styles));
+		// 跳回顶部的根因：内联 ref 每次渲染重挂 → 量高时清掉高度 → 滚动被夹回 0。
+		check("面板壳用**稳定**的 ref 回调（不再每次渲染重挂）",
+			/const setPopRef = \(0, react\.useCallback\)\(/.test(comp) && /ref: setPopRef,/.test(comp));
+		check("高度复量只在切视图时清高度（fitPanelHeight 的 remeasure 开关）",
+			/function fitPanelHeight\(el, anchorBottom, remeasure\)/.test(comp)
+			&& /if \(remeasure\) el\.style\.removeProperty\("height"\)/.test(comp));
 		check("右侧轮播卡 / 「展开全部」翻页已删除（用户 2026-11-01 要求）",
 			!/SlotCard|gacha-cal-sched-slot|gacha-cal-sched-more|gacha-cal-sched-nearpg|setNearAll/.test(comp));
-		const styles = readStylesSource();
 		check("置灰样式真的存在（清单行 data-mark ⇒ opacity）",
 			/\.gacha-cal-sched-u\[data-mark\]\{opacity:\.5\}/.test(styles));
 		check("工具栏 / 分段切换 / 筛选按钮的样式不是死代码",
 			styles.includes(".gacha-cal-sched-bar{") && styles.includes(".gacha-cal-sched-seg{")
-			&& styles.includes(".gacha-cal-sched-flt{") && styles.includes(".gacha-cal-sched-sec{")
+			&& styles.includes(".gacha-cal-sched-flt{")
 			&& styles.includes(".gacha-cal-sched-mark{"));
 	}
 }

@@ -379,7 +379,7 @@
 		//   · 只是沿用旧值（本轮没拿到新内容、但也没有报错）⇒「数据来自上次成功抓取 X 前」
 		//     （X 取该行的 _okAt，与游戏名悬停的「刷新时间」同一时间来源）。
 		//   · 该侧根本没有数据（没有条目）⇒「（无数据）」。
-		//   · 正常 ⇒ **只有源站墙钟原文**（悬停 = 源站原文，与 scheduleHoverText 同口径），
+		//   · 正常 ⇒ **只有源站墙钟原文**（悬停 = 源站原文，与 scheduleRowHover 同口径），
 		//     不拼任何「（）」说明 —— 正常态不撑长 hover。
 		// `x` 是 scheduleNormalize / scheduleHoverOnes 产出的条目（null = 该侧没有数据）。
 		function scheduleDateHover(x, now) {
@@ -426,17 +426,35 @@
 			return void 0;
 		}
 
+		// ── 清单行底色档位（2026-11-01 用户要求）──────────────────────────────────
+		//   · 剩余时间 < 24 小时 ⇒ "1"（浅红）
+		//   · 剩余时间 < 3 天   ⇒ "2"（浅黄）
+		// 只对**在期**（live）的行算：没开始（wait）没有"剩余"，长期/已结束也没有。
+		// 与文字色档位（scheduleUrgency，一周内）刻意分开：底色只在最后 3 天出现，一周内的行仍保持原底色。
+		const SCHEDULE_SOON_MS = 3 * 864e5;
+		function scheduleRemainBand(x) {
+			if (!x || x.state !== "live" || !(x.remain > 0)) return void 0;
+			if (x.remain <= SCHEDULE_DUE_MS) return "1";
+			if (x.remain <= SCHEDULE_SOON_MS) return "2";
+			return void 0;
+		}
+
 		// 类型图标：**内联 SVG**（卡池 = 菱形星芒 / 活动 = 旗帜）。两者**形状不同** → 不靠颜色也能分辨，
 		// 也不用 emoji（用户明确说 emoji 丑）。旁边的文字标签样式见 styles/schedule.css 的 .gacha-cal-sched-kind。
-		// 悬停明细：**原面板那套**（引擎的 bannerHover / eventHover —— 当期 ≥2 条时每条一行，
-// 形如「池名：角色 ⏎ 档期」或「活动名 + 3 空格 + 档期」）。没有并列条目时给空串 →
-// 退化成「外显 ⏎ 档期」，与原面板单条时的观感一致。
-			function scheduleHoverText(x) {
-				const hv = (x.isG ? x.g.bannerHover : x.g.eventHover) || "";
-				// 悬停一律给**源站墙钟原文**（rawSrc）；换算后的本机时区文本只用于外显
-				const head = [x.title, x.rawSrc || x.raw].filter(Boolean).join("\n");
-				return [hv, head].filter(Boolean).join("\n") || "—";
-			}
+		//
+		// 清单行自己的悬停（2026-11-01 用户要求）：**只写这一条**（外显名 + 这一期的源站墙钟原文），
+		// 不再把同格其它并列池的 bannerHover 整段贴上来 —— 那些内容属于别的行，悬停在这一行上是错的。
+		// 失败 / 沿用旧值时补一句备注（与表格日期格同口径）；正常态只有名称与档期。
+		function scheduleRowHover(x) {
+			if (!x) return "—";
+			// 悬停一律给**源站墙钟原文**（rawSrc）；换算后的本机时区文本只用于外显
+			const head = [x.show || x.title, x.rawSrc || x.raw].filter(Boolean).join("\n");
+			const g = x.g || {};
+			const note = sideFailText(x.isG ? "gacha" : "event", x.isG ? g.gachaFail : g.eventFail, { userSupplied: false });
+			if (!note) return head || "—";
+			const stale = !!(x.isG ? g.gachaStale : g.eventStale);
+			return head ? head + "\n（" + note + (stale ? "，数据来自上次成功抓取" : "") + "）" : "（" + note + "）";
+		}
 			function scheduleKindIcon(kind, cls) {
 			const box = { className: cls, viewBox: "0 0 12 12", "aria-hidden": "true", focusable: "false" };
 			if (kind === "gacha") {

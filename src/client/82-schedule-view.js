@@ -257,6 +257,14 @@
 				Promise.resolve(write).then((ok) => { if (ok === false) revert(); }, revert);
 			};
 			const markPlan = (0, react.useMemo)(() => scheduleMarkPlan(items, marks), [items, marks]);
+			// 清单实际渲染的行：**沿用 items 的排序**，只按两个开关过滤掉已收纳的完成/忽略行 ——
+			// 这样展开后它们会回到原来的位置（而不是统一堆到列表末尾）。
+			const listRows = (0, react.useMemo)(() => items.filter((x) => {
+				const mark = scheduleMarkOf(marks, x.markKey);
+				if (mark === "done") return showDone;
+				if (mark === "ignored") return showIgnored;
+				return true;
+			}), [items, marks, showDone, showIgnored]);
 			// 「24 小时内 / 7 天内」：只数**还没处理掉**的（标记完成/忽略的不再催），
 			// 并且开始或结束落在窗口内都算（用户口径：开始也算 —— 原来独立的"即将开始"已并进来）。
 			const glanceCounts = (0, react.useMemo)(() => {
@@ -291,6 +299,8 @@
 					className: "gacha-cal-sched-u",
 					key: x.rowKey,
 					"data-u": x.state === "wait" ? "wait" : scheduleUrgency(x),
+					// 底色档位：24 小时内到期 = 浅红、3 天内到期 = 浅黄（只算在期行，见 scheduleRemainBand）
+					"data-bg": scheduleRemainBand(x),
 					"data-mark": mark || void 0,
 					children: [
 						scheduleIcon("gacha-cal-sched-uic", x.g, 24),
@@ -299,12 +309,13 @@
 							scheduleKindIcon(x.isG ? "gacha" : "event", "gacha-cal-sched-tic"),
 							(0, react_jsx_runtime.jsx)("span", { children: x.isG ? "卡池" : "活动" })
 						] }),
-						(0, react_jsx_runtime.jsx)("span", { className: "gacha-cal-sched-what", title: scheduleHoverText(x), children: (0, react_jsx_runtime.jsx)("span", { className: "gacha-cal-inner", children: x.show || x.title || x.raw || "—" }) }),
+						// 悬停 = **这一行自己**的名称 + 档期（不再把同格其它并列池的整段文本贴上来）
+						(0, react_jsx_runtime.jsx)("span", { className: "gacha-cal-sched-what", title: scheduleRowHover(x), children: (0, react_jsx_runtime.jsx)("span", { className: "gacha-cal-inner", children: x.show || x.title || x.raw || "—" }) }),
 						(0, react_jsx_runtime.jsx)("span", { className: "gacha-cal-sched-when gacha-cal-sched-num", children: w.parts
 							? ["还剩 ", ...w.parts.map((p) => (0, react_jsx_runtime.jsxs)("span", { children: [p[0], (0, react_jsx_runtime.jsx)("small", { children: p[1] })] }, p[1]))]
 							: w.text }),
 						// 处理状态下拉框（未完成 / 完成 / 忽略）：选项来自 SCHEDULE_MARKS，
-						// 同一条在"已完成 / 已忽略"两段里也能随时改回来（那两段只是置灰，不是只读）。
+						// 已收纳的置灰行展开后也能随时改回来（置灰只表示状态，不是只读）。
 						(0, react_jsx_runtime.jsx)("select", {
 							className: "gacha-cal-sched-mark",
 							value: mark,
@@ -487,16 +498,16 @@
 					] }) : null
 				] }),
 				// ③ 清单（默认视图）：**全展开、不折叠**（2026-11-01 删掉「展开全部 N 条」与 4 秒翻页）；
-				//    每行一条（游戏 × 卡池/活动），按剩余时间排序。完成 / 忽略的两段默认收纳在最后。
-				view === "list" ? (0, react_jsx_runtime.jsxs)("div", { className: "gacha-cal-sched-list", onPointerMove: marqMove, onPointerLeave: marqClear, children: [
-					markPlan.pending.length
-						? markPlan.pending.map(itemRow)
-						: (0, react_jsx_runtime.jsx)("div", { className: "gacha-cal-sched-empty", children: "现在没有需要关注的档期" }),
-					showDone && markPlan.done.length ? (0, react_jsx_runtime.jsx)("div", { className: "gacha-cal-sched-sec", children: "已完成 " + markPlan.done.length }) : null,
-					showDone ? markPlan.done.map(itemRow) : null,
-					showIgnored && markPlan.ignored.length ? (0, react_jsx_runtime.jsx)("div", { className: "gacha-cal-sched-sec", children: "已忽略 " + markPlan.ignored.length }) : null,
-					showIgnored ? markPlan.ignored.map(itemRow) : null
-				] }) : (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [
+				//    每行一条（游戏 × 卡池/活动），按剩余时间排序。
+				//    完成 / 忽略只影响"显不显示"，**不改变位置**：点「显示已完成 / 显示已忽略」后，
+				//    置灰行会插回它原本的排序位置（用户 2026-11-01 要求，别再统一堆到最底下）。
+				view === "list" ? (0, react_jsx_runtime.jsx)("div", { className: "gacha-cal-sched-list", onPointerMove: marqMove, onPointerLeave: marqClear, children:
+					listRows.length
+						? listRows.map(itemRow)
+						: (0, react_jsx_runtime.jsx)("div", { className: "gacha-cal-sched-empty", children: markPlan.pending.length === 0 && items.length > 0
+							? "全部处理完了 · 点上面的「显示已完成 / 显示已忽略」可以回看"
+							: "现在没有需要关注的档期" })
+				}) : (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [
 					// ④ 游戏表（顶上切换按钮的第二个视图）：**没有区块标题**，列表头直接跟在后面
 					(0, react_jsx_runtime.jsxs)("div", { className: "gacha-cal-sched-tcap", children: [
 						(0, react_jsx_runtime.jsx)("span", { children: "游戏" }),
