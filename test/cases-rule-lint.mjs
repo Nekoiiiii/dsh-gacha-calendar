@@ -533,12 +533,17 @@ export default async function run() {
 			&& /function scheduleRemainBand\(x\)/.test(comp)
 			&& /x\.remain <= SCHEDULE_DUE_MS\) return "1"/.test(comp)
 			&& /x\.remain <= SCHEDULE_SOON_MS\) return "2"/.test(comp));
-		// 滚动条：原来被藏掉（scrollbar-width:none），现在要有可拖动的可见滑块。
+		// 滚动条：原来被藏掉（scrollbar-width:none），现在要有可拖动、贴边、加粗居中的可见滑块。
 		const styles = readStylesSource();
-		check("右侧滚动条可见且可拖动（scrollbar-width:thin + ::-webkit-scrollbar-thumb）",
+		check("右侧滚动条贴边 + 常驻槽位 + 6px 粗滑块居中（12px 轨道 / 3px 透明边）",
 			!/scrollbar-width:none/.test(styles)
-			&& /\.gacha-cal-sched-body\{[^}]*scrollbar-width:thin/.test(styles)
-			&& /\.gacha-cal-sched-body::-webkit-scrollbar-thumb\{/.test(styles));
+			&& /scrollbar-gutter:stable/.test(styles)
+			&& /scrollbar-width:thin/.test(styles)
+			&& /\.gacha-cal-sched-body::-webkit-scrollbar\{width:12px/.test(styles)
+			&& /\.gacha-cal-sched-body::-webkit-scrollbar-thumb\{[^}]*border:3px solid transparent/.test(styles)
+			// 卡片右侧让给滚动条（内容缩进由槽位负责），底栏自己补 12px
+			&& /padding:10px 0 0 12px/.test(styles)
+			&& /\.gacha-cal-sched-foot\{[^}]*padding:3px 12px 4px 0/.test(styles));
 		check("底色样式真的存在（data-bg=1 浅红 / data-bg=2 浅黄）",
 			/\.gacha-cal-sched-u\[data-bg="1"\]\{background:/.test(styles)
 			&& /\.gacha-cal-sched-u\[data-bg="2"\]\{background:/.test(styles));

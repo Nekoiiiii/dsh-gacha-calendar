@@ -21,7 +21,8 @@
 			.gacha-cal-sched-find input:focus{outline:none;border-color:var(--dsw-alias-link,#3b5bfd)}
 			.gacha-cal-sched-find-x{position:absolute;right:2px;top:50%;transform:translateY(-50%);width:15px;height:15px;padding:0;border:none;border-radius:50%;background:transparent;color:var(--dsw-alias-label-tertiary,#6b7280);font:inherit;font-size:12px;line-height:1;cursor:pointer}
 			.gacha-cal-sched-find-x:hover{color:var(--dsw-alias-label-primary,#1f2329);background:var(--dsw-alias-bg-layer-1,#f3f4f6)}
-			.gacha-cal-sched-foot{position:relative;flex:0 0 auto;display:flex;align-items:center;gap:8px;padding:3px 0 4px;border-top:1px solid var(--dsw-alias-border-l1,rgba(127,127,127,.25));font-size:10.5px;color:var(--dsw-alias-label-tertiary,#6b7280)}
+			/* 卡片右侧 padding 让给滚动条（见 schedule.css），底栏在滚动层之外，自己补回 12px 右内边距。 */
+			.gacha-cal-sched-foot{position:relative;flex:0 0 auto;display:flex;align-items:center;gap:8px;padding:3px 12px 4px 0;border-top:1px solid var(--dsw-alias-border-l1,rgba(127,127,127,.25));font-size:10.5px;color:var(--dsw-alias-label-tertiary,#6b7280)}
 			/* 底栏**不要**给 z-index：展开的探头是 position:fixed + z-index:auto，与底栏同层，
 			   DOM 靠后的底栏会盖住它 ⇒ 遮罩会糊在展开内容上（用户 2026-10-16 反馈）。
 			   正解是给展开的探头 z-index:2（见上面 :hover 那条），**并由探头自己负责"边缘不硬"**：
