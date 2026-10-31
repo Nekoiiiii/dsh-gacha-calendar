@@ -1,3 +1,32 @@
+		// 新面板：量内容的实际跨度并把高度写回壳（内联 + !important）。
+		// 挂载时、以及**切换视图后**共用这一份 —— 两处的量法与上限完全一致，只是时机不同。
+		// 为什么开头先 removeProperty：切换视图时壳上还钉着**上一个视图**的高度，
+		// 不先清掉就永远量到旧值（新视图更高 → 白留滚动条；更矮 → 底部一片空白）。
+		// 挂载时本来就没有 inline height，removeProperty 是空操作 ⇒ 行为与改动前逐字相同。
+		function fitPanelHeight(el, anchorBottom) {
+			if (!el) return;
+			el.style.removeProperty("height");
+			// 量**内容的实际跨度**（首个子元素顶边 → 末个子元素底边 + 视图内边距），而不是视图自身高度：
+			// 视图可能被上限/拉伸影响，"自身高度"不足以代表内容。
+			const inner = el.firstElementChild;
+			let content;
+			if (inner && inner.children.length) {
+				const kids = Array.prototype.slice.call(inner.children);
+				const first = kids[0].getBoundingClientRect();
+				const last = kids[kids.length - 1].getBoundingClientRect();
+				const cs = window.getComputedStyle(inner);
+				content = (last.bottom - first.top) + (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0) + 2;
+			} else {
+				content = el.scrollHeight;
+			}
+			// 上限 = **可用空间**（视口高 − 锚点 − 8），不再用 72vh：
+			// 实测 gapView=0 ⇒ 面板盒内本无空白，但只到 72vh 时锚点之下会留出一段；
+			// 那段虽不在我们盒内，却与卡片同为白底、观感上就是"面板下面多一块"。
+			// 铺满可用空间后：卡片被内容（scrollHeight≈3027）填满并滚动 ⇒ 视觉空白消失，一屏还能多看好几行。
+			const avail = Math.round(window.innerHeight - (typeof anchorBottom === "number" ? anchorBottom : 0) - 8);
+			const cap = avail > 160 ? avail : Math.round(window.innerHeight * 0.72);
+			el.style.setProperty("height", Math.round(content > cap ? cap : content) + "px", "important");
+		}
 		// engine：core 引擎（抓取/解析/缓存合并都在里面）。面板只读它返回的 Result JSON。
 		function CalendarPanel({ wide, scope, engine }) {
 			const [open, setOpen] = (0, react.useState)(false);
@@ -70,29 +99,8 @@
 				// 它本来靠 CSS 自己限高滚动 —— 给它钉一个 inline height 只会留下一个被 72vh 夹住的死高度。
 				// 判定沿用组件里那一处（与 className / children 同一个 `s.newPanel === true`），不另立第二套。
 				if (s.newPanel !== true) { el.style.removeProperty("height"); return; }
-				const fit = () => {
-					// 量**内容的实际跨度**（首个子元素顶边 → 末个子元素底边 + 视图内边距），而不是视图自身高度：
-					// 视图可能被上限/拉伸影响，"自身高度"不足以代表内容。
-					const inner = el.firstElementChild;
-					let content;
-					if (inner && inner.children.length) {
-						const kids = Array.prototype.slice.call(inner.children);
-						const first = kids[0].getBoundingClientRect();
-						const last = kids[kids.length - 1].getBoundingClientRect();
-						const cs = window.getComputedStyle(inner);
-						content = (last.bottom - first.top) + (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0) + 2;
-					} else {
-						content = el.scrollHeight;
-					}
-					// 上限 = **可用空间**（视口高 − 锚点 − 8），不再用 72vh：
-					// 实测 gapView=0 ⇒ 面板盒内本无空白，但只到 72vh 时锚点之下会留出一段；
-					// 那段虽不在我们盒内，却与卡片同为白底、观感上就是"面板下面多一块"。
-					// 铺满可用空间后：卡片被内容（scrollHeight≈3027）填满并滚动 ⇒ 视觉空白消失，一屏还能多看好几行。
-					const avail = Math.round(window.innerHeight - (anchor && typeof anchor.bottom === "number" ? anchor.bottom : 0) - 8);
-					const cap = avail > 160 ? avail : Math.round(window.innerHeight * 0.72);
-					el.style.setProperty("height", Math.round(content > cap ? cap : content) + "px", "important");
-				};
-				fit();
+				// 量法/上限只有一份：fitPanelHeight（与挂载时的 ref 回调、切换视图后的复量共用）。
+				fitPanelHeight(el, anchor && typeof anchor.bottom === "number" ? anchor.bottom : void 0);
 				// 只写一次：不挂 ResizeObserver、也不做延迟复写 —— 观察被拉伸的元素、或绘制后再写一次，
 				// 都会再触发重排（用户观察到"刚点开翻不动、隔一会才正常"）。数据刷新后重新开合面板即可覆盖。
 			}, [open, s.newPanel]);
@@ -114,7 +122,7 @@
 				return rec;
 			}, [s.lastData]);
 			// 主题色覆盖表（设置页取色器写入）。**并进条目自身的 color**，
-			// 让面板里所有消费者（表格行 --g、留白卡 slotAccent、……）自动拿到同一个颜色 ——
+			// 让面板里所有消费者（表格行 --g、……）自动拿到同一个颜色 ——
 			// 不再把这张表透传到各组件（上一版透传时漏了作用域，直接把面板渲染崩了）。
 			const colorOverrides = (0, react.useMemo)(() => parseJsonStr(s.gameColors, {}), [s.gameColors]);
 			// 可见条目（隐藏/已删除的不显示）；抓取成功的数据覆盖卡池/活动列
@@ -286,6 +294,46 @@
 			// 用 ref 读最新值，`doRefresh` 的身份保持不变，两边都满足。
 			const sRef = (0, react.useRef)(s);
 			sRef.current = s;
+			// ── 清单每行的「完成 / 忽略」标记（设置键 itemMarks，JSON 字符串）──────────────────
+			// 写入与设置页同一套表单写入（scope.set），所以必须显式判断返回值 false（= 宿主没接受）。
+			// 合并基准用 ref 记住**上一次写出去的对象**：连续改两个下拉框时，第二次读到的设置快照
+			// 可能还没追上第一次（scope.set 是异步的）—— 直接按快照合并会把第一条标记覆盖掉。
+			const markBaseRef = (0, react.useRef)(null);
+			const setItemMark = (0, react.useCallback)((key, mark) => {
+				if (!key) return Promise.resolve(false);
+				const base = markBaseRef.current || scheduleMarksOf(sRef.current.itemMarks);
+				const next = { ...base };
+				if (mark === "done" || mark === "ignored") next[key] = mark;
+				else delete next[key];
+				markBaseRef.current = next;
+				// 失败：清掉基准（下一次按最新设置重新合并），并回 false ⇒ 调用方撤掉乐观状态。
+				const failed = (err) => {
+					markBaseRef.current = null;
+					try {
+						console.warn("[gacha-calendar] \u5199\u5165\u5904\u7406\u72B6\u6001\u5931\u8D25\uFF1A", err || "settings-write-rejected:itemMarks");
+					} catch (e) { /* ignore */ }
+					return false;
+				};
+				if (!scope || typeof scope.set !== "function") return Promise.resolve(failed("scope-unavailable"));
+				let write;
+				try { write = scope.set("itemMarks", JSON.stringify(next)); } catch (err) { return Promise.resolve(failed(err)); }
+				return Promise.resolve(write).then((accepted) => (accepted === false ? failed() : true), failed);
+			}, [scope]);
+			// 切换视图后**复量面板高度**：清单里一行约 30px、游戏表一行约 90px，两者高度差很多；
+			// 沿用旧高度会出现"表比壳高 ⇒ 明明一屏放得下却先出滚动条"或"壳比表高 ⇒ 底部一片空白"。
+			// 换视图是 React state 更新 ⇒ DOM 下一帧才变，所以排到 rAF；再补一次 120ms 兜底
+			// （真机偶发首帧还量不到新视图的高度）。量法/上限与挂载时完全同一份（fitPanelHeight）。
+			const refitPanelHeight = (0, react.useCallback)(() => {
+				const el = popRef.current;
+				if (!el) return;
+				const run = () => {
+					if (!el || sRef.current.newPanel !== true) return;
+					const bottom = parseFloat(el.style.bottom);
+					fitPanelHeight(el, Number.isFinite(bottom) ? bottom : void 0);
+				};
+				window.requestAnimationFrame(run);
+				window.setTimeout(run, 120);
+			}, []);
 			const doRefresh = (0, react.useCallback)(async () => {
 				if (refreshLock.current) return;
 				refreshLock.current = true;
@@ -500,22 +548,8 @@
 							if (s.newPanel !== true) { el.style.removeProperty("height"); return; }
 							// 为什么不用 useEffect：本插件环境里 effect 未执行（实测 inline style 始终只有 left/bottom，
 							// 高度写不进去、面板就按内容撑到 2699）。ref 回调由 React 保证在挂载时调用，最稳。
-							const fit = () => {
-								const inner = el.firstElementChild;
-								let content;
-								if (inner && inner.children.length) {
-									const kids = Array.prototype.slice.call(inner.children);
-									const first = kids[0].getBoundingClientRect();
-									const last = kids[kids.length - 1].getBoundingClientRect();
-									const cs = window.getComputedStyle(inner);
-									content = (last.bottom - first.top) + (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0) + 2;
-								} else {
-									content = el.scrollHeight;
-								}
-								const avail = Math.round(window.innerHeight - (anchor && typeof anchor.bottom === "number" ? anchor.bottom : 0) - 8);
-								const cap = avail > 160 ? avail : Math.round(window.innerHeight * 0.72);
-								el.style.setProperty("height", Math.round(content > cap ? cap : content) + "px", "important");
-							};
+							// 量法/上限只有一份：fitPanelHeight（切换视图后的复量也走它）。
+							const fit = () => fitPanelHeight(el, anchor && typeof anchor.bottom === "number" ? anchor.bottom : void 0);
 							fit();
 							window.requestAnimationFrame(fit);
 							window.setTimeout(fit, 300);
@@ -531,6 +565,10 @@
 							? (0, react_jsx_runtime.jsx)(ScheduleView, {
 								games, now, s, colorMap: colorOverrides, refreshing, onRefresh: doRefresh,
 								lastRefreshText, scrapeInfo: bannerInfo, scrapeLines: bannerLines,
+								// 清单里改「未完成 / 完成 / 忽略」→ 写设置 itemMarks（写失败会退回原值）
+								onMarkChange: setItemMark,
+								// 顶上切「活动清单 / 游戏日历」后复量面板高度（两个视图高度差很多）
+								onViewChange: refitPanelHeight,
 								// 底栏那枚齿轮（新面板）：与旧面板同一个动作 —— 先关本面板，
 								// 再走三步跳到 DSH 设置页的本插件分区（失败只 console.warn）。
 								onOpenSettings: () => {

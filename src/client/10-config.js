@@ -99,6 +99,11 @@
 			healthCheckedAt: 0,
 			// 每游戏主题色覆盖：{ id: "#rrggbb" }（空 = 用出厂色 / 名字哈希），由设置页的取色器写入
 			gameColors: "{}",
+			// 面板清单每行的处理状态（JSON：{ [markKey]: "done" | "ignored" }，见 81-schedule-model.js 的
+			// scheduleMarkKeyOf / scheduleMarksOf）：只有「完成 / 忽略」才写，未完成 = 键不存在。
+			// 这个键必须同时出现在 engine-head.js 的 CONFIG_KEYS 与 src/index.js 的 schema 里
+			// （守卫见 test/cases-rule-lint.mjs）。
+			itemMarks: "{}",
 			// 不展示的条目 id 列表（设置页开关）；出厂默认隐藏见条目的 `defaultHidden` 字段
 			hidden: [],
 			// 用户**明确打开**的条目 id 列表 —— 用来覆盖条目的出厂 `defaultHidden`。

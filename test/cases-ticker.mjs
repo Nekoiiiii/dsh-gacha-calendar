@@ -672,8 +672,11 @@ export default async function run() {
 		check("useCycleSteps 的 seq **单调递增不取模**（方向的分母），step 才是取模后的格号",
 			/setSeq\(\(v\) => v \+ 1\)/.test(comp)
 			&& /return \{ step: count > 0 \? seq % count : 0, seq \};/.test(comp));
-		check("useCycle 退化成 useCycleSteps(...).step 的薄包装（留白卡 / 近期分页行为不变）",
-			/function useCycle\(count, seconds, paused\) \{\s*\n\s*return useCycleSteps\(count, seconds, paused\)\.step;\s*\n\s*\}/.test(comp));
+		// 2026-11-01：右侧轮播卡与「近期」4 秒翻页都按用户要求删了（换成全展开的清单 + 视图切换），
+		// 那个"只取格号"的薄包装 useCycle 也随之删除 —— 面板里再不需要取模格号。
+		// 留下这条反向断言：它若回来，说明有人把已删除的轮播/分页又接上了（同一份代码只该有一个节拍器）。
+		check("useCycle 已随轮播卡 / 近期分页一起删除（新面板不再需要取模格号）",
+			!/function useCycle\(count, seconds, paused\)/.test(comp));
 		check("取格子的 stepAt 有越界兜底（prevStep 可能已不在新序列里，不能抛）",
 			/const stepAt = \(step\) => tickerSteps\[step\] \|\| \{ idx: 0, idle: true, slideIndex: -1, dir: "down" \};/.test(comp));
 		check("tickerLine 按 slideIndex 取轮播条目（不再是 idx-1 的下标算术）",

@@ -43,16 +43,48 @@
 			.gacha-cal-sched-glance{display:block;min-width:0;flex:0 1 auto;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:12px;color:var(--dsw-alias-label-secondary,#4a5261)}
 			.gacha-cal-sched-glance b{color:var(--dsw-alias-label-primary,#1f2329);font-weight:500}
 			.gacha-cal-sched-sep{color:var(--dsw-alias-label-tertiary,#6b7280);margin:0 5px}
-			/* ③ 「近期」：跨游戏、按紧迫度、**全列出**（不折叠不点开），占左约 64% */
-			.gacha-cal-sched-recent{display:flex;gap:10px;margin:10px 0 10px;align-items:stretch}
-			.gacha-cal-sched-urgent{flex:0 0 64%;min-width:0}
-			/* 右侧虚线空框：用途未定，先留空（设计稿的 .slot） */
-			.gacha-cal-sched-slot{flex:1 1 auto;border:1px dashed var(--dsw-alias-border-l2,rgba(127,127,127,.4));border-radius:12px}
+			/* ②b 工具栏（2026-11-01）：左 = 视图切换（活动清单 / 游戏日历），右 = 显示已完成 / 显示已忽略。
+			   ⚠️ 游戏表**默认收起**：右上角那张轮播卡已删除，它的位置与那 1 个 body 子元素位由这条工具栏顶上
+			   （见 animations.css 里 trow 的 nth-child 说明 —— 序号不能变）。 */
+			.gacha-cal-sched-bar{display:flex;align-items:center;gap:6px;margin:8px 0 2px}
+			.gacha-cal-sched-seg{display:inline-flex;align-items:center;padding:1px;border-radius:8px;
+				background:color-mix(in oklab,var(--dsw-alias-label-primary,#1f2329) 7%,transparent)}
+			.gacha-cal-sched-seg button{border:none;background:transparent;color:var(--dsw-alias-label-secondary,#4a5261);
+				font:inherit;font-size:11px;line-height:16px;padding:1px 10px;border-radius:7px;cursor:pointer;white-space:nowrap}
+			.gacha-cal-sched-seg button:hover{color:var(--dsw-alias-label-primary,#1f2329)}
+			.gacha-cal-sched-seg button[aria-pressed="true"]{background:var(--dsw-alias-bg-base,#fff);color:var(--dsw-alias-label-primary,#1f2329);
+				font-weight:500;box-shadow:0 1px 2px rgba(0,0,0,.12)}
+			.gacha-cal-sched-seg button:focus-visible{outline:none;box-shadow:inset 0 0 0 1px var(--dsw-alias-link,#3b5bfd)}
+			/* 两个筛选按钮：文案就是用户要求的「显示已完成 / 显示已忽略」，数量只放 title。
+			   展开时（aria-pressed=true）用链接色 + 淡底，收起时与普通次要文字同色。
+			   第一个按钮 margin-left:auto 把这一组推到右端（它们在 .gacha-cal-sched-bar 里是唯一的直接 button）。 */
+			.gacha-cal-sched-flt{margin-left:auto;box-sizing:border-box;height:20px;padding:0 8px;border:1px solid transparent;
+				border-radius:7px;background:transparent;color:var(--dsw-alias-label-tertiary,#6b7280);font:inherit;font-size:11px;cursor:pointer;white-space:nowrap}
+			.gacha-cal-sched-flt + .gacha-cal-sched-flt{margin-left:0}
+			.gacha-cal-sched-flt:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(127,127,127,.1));color:var(--dsw-alias-label-primary,#1f2329)}
+			.gacha-cal-sched-flt[aria-pressed="true"]{color:var(--dsw-alias-link,#3b5bfd);
+				border-color:color-mix(in oklab,var(--dsw-alias-link,#3b5bfd) 45%,transparent);
+				background:color-mix(in oklab,var(--dsw-alias-link,#3b5bfd) 8%,transparent)}
+			.gacha-cal-sched-flt:focus-visible{outline:none;border-color:var(--dsw-alias-link,#3b5bfd)}
+			/* ③ 清单（**默认视图**，2026-11-01）：每款游戏的每一口池 / 每一个活动**各占一行**，
+			   **全展开不折叠**（「展开全部 N 条」与 4 秒翻页已删）；跨游戏、按剩余时间排序。 */
+			.gacha-cal-sched-list{display:block;margin:10px 0 10px}
+			/* 已完成 / 已忽略两段的收纳标题：左边文字、右边一条细线（展开时出现在清单末尾） */
+			.gacha-cal-sched-sec{display:flex;align-items:center;gap:8px;margin:14px 0 2px;padding:0 8px;
+				font-size:10.5px;color:var(--dsw-alias-label-tertiary,#6b7280)}
+			.gacha-cal-sched-sec::after{content:"";flex:1 1 auto;height:1px;background:var(--dsw-alias-border-l1,rgba(127,127,127,.25))}
 			.gacha-cal-sched-u{display:flex;align-items:center;gap:9px;padding:6px 8px;border-radius:12px}
 			.gacha-cal-sched-u:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(127,127,127,.1))}
 			.gacha-cal-sched-u + .gacha-cal-sched-u{margin-top:1px}
+			/* 完成 / 忽略：整行置灰。用 opacity 而**不是** filter —— filter 会给祖先建包含块
+			   （游戏表探头是 position:fixed，靠 .gacha-cal-sched 里没有 filter/transform 才不会错位）。
+			   清单行里没有 fixed 后代，本来安全；但同一套理由继续遵守，免得日后有人照抄到表格行上。 */
+			.gacha-cal-sched-u[data-mark]{opacity:.5}
+			.gacha-cal-sched-u[data-mark] .gacha-cal-sched-what{color:var(--dsw-alias-label-tertiary,#6b7280);font-weight:500}
 			.gacha-cal-sched-uic{display:inline-flex;flex:0 0 auto;width:26px;height:26px;box-sizing:border-box;border:1px solid var(--dsw-alias-border-l1,rgba(127,127,127,.25));border-radius:7px;overflow:hidden;background:var(--dsw-alias-bg-layer-2,rgba(127,127,127,.08))}
-			.gacha-cal-sched-who{flex:0 0 auto;width:78px;font-size:12.5px;color:var(--dsw-alias-label-secondary,#4a5261);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+			/* 游戏名列固定在 92px（比右侧卡时代宽 14px）：右侧卡删掉后空出来的宽度全给事项名（.what），
+			   所以这里只加一点、剩下都留给「展示更多文字」这条要求。 */
+			.gacha-cal-sched-who{flex:0 0 auto;width:92px;font-size:12.5px;color:var(--dsw-alias-label-secondary,#4a5261);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 			/* 图标形状已可辨（星芒 vs 旗帜），收窄后不再显示「卡池/活动」二字（设计稿的取舍） */
 			.gacha-cal-sched-what{flex:1 1 auto;min-width:0;font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 			/* 「卡池/活动」胶囊：与表头同一套配色（卡池=链接蓝底 / 活动=琥珀底）。
@@ -69,6 +101,14 @@
 			.gacha-cal-sched-u[data-u="1"] .gacha-cal-sched-when{color:var(--dsw-alias-state-error-primary,#b3261e)}
 			.gacha-cal-sched-u[data-u="2"] .gacha-cal-sched-when{color:var(--dsw-alias-state-warn-label,#9a4a06)}
 			.gacha-cal-sched-u[data-u="wait"] .gacha-cal-sched-when{color:var(--dsw-alias-link,#3b5bfd);font-weight:500}
+			/* 每行右侧的「未完成 / 完成 / 忽略」下拉框：**原生 select**（弹层交给系统，不自己造菜单），
+			   这里只统一描边 / 字号，并保证它不被 flex 压缩（flex:0 0 auto）。 */
+			.gacha-cal-sched-mark{flex:0 0 auto;box-sizing:border-box;height:20px;max-width:78px;padding:0 2px;
+				border:1px solid var(--dsw-alias-border-l1,rgba(127,127,127,.35));border-radius:6px;
+				background:var(--dsw-alias-bg-base,#fff);color:var(--dsw-alias-label-secondary,#4a5261);
+				font:inherit;font-size:10.5px;cursor:pointer}
+			.gacha-cal-sched-mark:hover{border-color:var(--dsw-alias-border-l2,rgba(127,127,127,.55))}
+			.gacha-cal-sched-mark:focus-visible{outline:none;border-color:var(--dsw-alias-link,#3b5bfd)}
 			/* ④ 游戏表：**没有区块标题**，列表头直接跟在后面；列 = 游戏(158px) / 卡池 / 活动 */
 			.gacha-cal-sched-tcap{display:grid;grid-template-columns:158px 1fr 1fr;gap:0 12px;padding:2px 8px 0;font-size:10.5px;color:var(--dsw-alias-label-tertiary,#6b7280)}
 			.gacha-cal-sched-th{display:inline-flex;align-items:center;gap:5px;padding-left:9px}
@@ -143,7 +183,6 @@
 			.gacha-cal-sched-cell[data-t="event"]{--gf:color-mix(in oklab,var(--g) 42%,#fff)}
 			.gacha-cal-sched-cn{font-size:12px;font-weight:400;letter-spacing:.012em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 			.gacha-cal-sched-cm{margin-top:1px;font-size:11px;font-weight:400;letter-spacing:.02em;font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-tertiary,#6b7280);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-			.gacha-cal-sched-more{color:var(--dsw-alias-label-secondary,#4a5261)}
 			.gacha-cal-sched-cell[data-u="1"] .gacha-cal-sched-cn{color:var(--dsw-alias-state-error-primary,#b3261e);font-weight:600}
 			.gacha-cal-sched-cell[data-u="1"] .gacha-cal-sched-cm{color:var(--dsw-alias-state-error-primary,#b3261e)}
 			.gacha-cal-sched-cell[data-u="2"] .gacha-cal-sched-cm{color:var(--dsw-alias-state-warn-label,#9a4a06)}

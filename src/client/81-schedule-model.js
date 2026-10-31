@@ -1,12 +1,15 @@
 		// ══ 实验特性：新「二游日历」面板视图（`settings.newPanel === true` 时才渲染）══
-		// 设计稿（**唯一真源**）：dsh-gacha-ui-lab/a-v6.html（效果图 a-v6.png）
+		// 视觉参考（历史设计稿）：dsh-gacha-ui-lab/a-v6.html（效果图 a-v6.png）——
+		// 2026-11-01 起按用户要求在它上面改了两处结构（见 ③④）。
 		//
-		// 结构自上而下，与设计稿一一对应（类名统一 `gacha-cal-sched-*`，样式见 styles/schedule.css 与 styles/schedule-foot.css）：
+		// 结构自上而下（类名统一 `gacha-cal-sched-*`，样式见 styles/schedule.css 与 styles/schedule-foot.css）：
 		//   ① 日期胶囊（2026-10-17 起面板**内**不再写标题「二游日历」那四个字；**没有**总计数胶囊。
 		//      侧栏那个入口按钮的「二游日历」是插件入口，照旧保留 —— 两处别混）
-		//   ② 一行总览（K 版）：24 小时内 N 条 · 7 天内 M 条（为 0 的段不显示；都为 0 只留一句短兜底）
-		//   ③ 「近期」：跨游戏、按紧迫度、**全列出**（不折叠、不点开），占左约 64%，右侧一个虚线空框
-		//   ④ 游戏表（**没有区块标题**，列表头直接跟在后面）：游戏 190px / 卡池 / 活动，
+		//   ② 一行总览（K 版）：24 小时内 N 条 · 7 天内 M 条（**永远两段**，N/M 为 0 也只写数字）
+		//   ③ 清单：跨游戏、按紧迫度，**每款游戏的每一口池 / 每一个活动各占一行**，全展开不折叠；
+		//      每行右侧一个「未完成 / 完成 / 忽略」下拉框（状态存 `itemMarks`，见 scheduleMarkPlan）；
+		//      完成 / 忽略的行置灰并默认收纳，由顶部两个按钮分别展开。**没有**右侧轮播卡（2026-11-01 删）。
+		//   ④ 游戏表（顶上切换按钮的第二视图，**默认不显示**）：游戏 / 卡池 / 活动三列 + 14 天迷你条，
 		//      顺序 = 用户在设置里拖的排列（`applyOrder` 已经排好，这里**不按紧迫度重排**）
 		//   ⑤ 图例（颜色=游戏 / 图案=状态） ⑥ 失败横条 + 重试 ⑦ 底部「上次更新 X 分钟前」+ 刷新
 		//
@@ -135,6 +138,58 @@
 			return tickerPickOf(out, now.getTime(), hours);
 		}
 
+		// ── 每行的处理状态（未完成 / 完成 / 忽略）────────────────────────────────────
+		// 存在设置里（键 itemMarks，JSON 字符串 `{ [markKey]: "done" | "ignored" }`）：
+		//   · 键不存在 / 空串 = 未完成（默认值，**不落盘** —— 只有完成/忽略才写，存档不会越滚越大）；
+		//   · "done" = 完成、"ignored" = 忽略：面板里置灰、默认收纳，由顶上的两个按钮展开。
+		// 为什么放设置而不是组件 state：用户记的是"这一期活动我打完了"，关掉面板 / 重启 DSH 后必须还在。
+		// 为什么 key 里带窗口：同一个活动下一期复刻（标题相同、日期不同）是一条**新**任务，
+		//   不能继承上一期的「完成」—— 所以窗口是标识的一部分。
+		const SCHEDULE_MARKS = [
+			{ value: "", label: "未完成" },
+			{ value: "done", label: "完成" },
+			{ value: "ignored", label: "忽略" }
+		];
+		// 一条档期的稳定标识：游戏 id + 卡池/活动侧 + 标题 + **这一期的窗口**。
+		// 窗口优先用绝对时间（能解析时最稳，不受时区文案影响），解析不了才退回源站原文。
+		function scheduleMarkKeyOf(id, side, title, startTs, endTs, raw) {
+			const win = typeof startTs === "number" && typeof endTs === "number" && endTs > startTs
+				? startTs + "-" + endTs
+				: String(raw || "").trim();
+			return [String(id || ""), String(side || ""), String(title || "").trim(), win].join("\u0001");
+		}
+		// 设置里的 JSON → 只保留合法状态的表。坏 JSON / 脏值一律当"没有标记"（绝不让面板渲染失败）。
+		function scheduleMarksOf(value) {
+			let rec = null;
+			if (value && typeof value === "object" && !Array.isArray(value)) rec = value;
+			else if (typeof value === "string" && value.trim()) {
+				try { rec = JSON.parse(value); } catch (e) { rec = null; }
+			}
+			const out = {};
+			if (!rec || typeof rec !== "object") return out;
+			for (const key of Object.keys(rec)) {
+				const v = rec[key];
+				if (v === "done" || v === "ignored") out[key] = v;
+			}
+			return out;
+		}
+		function scheduleMarkOf(marks, key) {
+			const v = key && marks ? marks[key] : "";
+			return v === "done" || v === "ignored" ? v : "";
+		}
+		// 把（已按紧迫度排好序的）条目切成三段：未完成 → 已完成 → 已忽略。
+		// 面板按这个顺序渲染：前两段/第三段**默认不显示**，由顶上两个按钮分别展开。
+		function scheduleMarkPlan(items, marks) {
+			const plan = { pending: [], done: [], ignored: [] };
+			for (const x of items || []) {
+				const mark = scheduleMarkOf(marks, x && x.markKey);
+				if (mark === "done") plan.done.push(x);
+				else if (mark === "ignored") plan.ignored.push(x);
+				else plan.pending.push(x);
+			}
+			return plan;
+		}
+
 		// 一条档期 = 某款游戏的卡池侧或活动侧。读不出绝对档期的（源站原文）按"长期"处理，
 		// **不**硬凑一个天数——这也是设计稿里"点线 + 长期"两字的来由。
 		function scheduleNormalize(g, side, now) {
@@ -164,7 +219,10 @@
 			// 悬停文本：**原始文本** = 标题 + 源站原文（优先 Raw），与旧面板 gachaTitle/eventTitle 的写法一致
 			const datesRaw = (isG ? g.bannerDatesRaw : g.eventDatesRaw) || rawSrc;
 			const orig = title + (datesRaw ? "\n" + datesRaw : "");
-			return { key: g.id + ":" + side, g, side, isG, title, show, orig, raw, rawSrc, fail, state, startTs, endTs, remain };
+			// markKey = 「完成 / 忽略」的存储键（见 scheduleMarkKeyOf）：标题用**引擎给的原始标题**，
+			// 不用外显的 show（角色名会随同期池子合并而变，拿它当键会让标记漂走）。
+			const markKey = scheduleMarkKeyOf(g.id, side, title, startTs, endTs, raw || rawSrc);
+			return { key: g.id + ":" + side, markKey, g, side, isG, title, show, orig, raw, rawSrc, fail, state, startTs, endTs, remain };
 		}
 
 		// ── 同格并列条目：从悬停文本解析出来 ─────────────────────────────────────────
@@ -259,7 +317,7 @@
 				else if (now.getTime() < r.startTs) state = "wait";
 				else if (now.getTime() > r.endTs) state = "ended";
 				else { state = "live"; remain = Math.max(0, r.endTs - now.getTime()); }
-				out.push({ key: it.key, g: it.g, side: it.side, isG: it.isG, title: x.title, raw: x.win, fail: null, state, startTs: r.startTs, endTs: r.endTs, remain });
+				out.push({ key: it.key, markKey: scheduleMarkKeyOf(it.g.id, it.side, x.title, r.startTs, r.endTs, x.win), g: it.g, side: it.side, isG: it.isG, title: x.title, raw: x.win, fail: null, state, startTs: r.startTs, endTs: r.endTs, remain });
 			}
 			return out;
 		}
@@ -485,8 +543,4 @@
 				return () => window.clearInterval(t);
 			}, [count, seconds, paused]);
 			return { step: count > 0 ? seq % count : 0, seq };
-		}
-		// 老调用方（日程卡的留白卡 / 近期分页）只要格号：行为与改动前完全一致。
-		function useCycle(count, seconds, paused) {
-			return useCycleSteps(count, seconds, paused).step;
 		}

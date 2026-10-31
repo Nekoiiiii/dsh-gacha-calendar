@@ -35,6 +35,10 @@
 			//    防回归见 test/cases-rule-lint.mjs 的「DEFAULT_SETTINGS 的键必须都在 CONFIG_KEYS 里」。
 			const CONFIG_KEYS = [
 				"order", "hidden", "shown", "removed", "customEntries", "customUrls", "customEventUrls", "gameColors",
+				// itemMarks：面板清单每行的处理状态（JSON 字符串，{ markKey: "done" | "ignored" }）。
+				// 引擎不消费它（面板直接读写），但它是 DEFAULT_SETTINGS 的键 ⇒ 必须在这里，
+				// 否则 test/cases-rule-lint.mjs 的「配置键成套」会红。
+				"itemMarks",
 				// newPanel：实验特性「新日程面板」开关（默认 true）。**别漏**——漏了就是 2026-10-03 那个
 				// 「勾了不生效」的复刻：设置页写进表单、面板却读不到。守卫见 test/cases-rule-lint.mjs。
 				// newPanelMigrated：宿主一次性迁移标记（默认 false），引擎不消费它，但按约定列在这里

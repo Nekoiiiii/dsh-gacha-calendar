@@ -81,128 +81,17 @@
 				((el.closest(".gacha-cal-sched") || document).querySelector(".gacha-cal-sched-body"));
 			if (v && v.scrollHeight > v.clientHeight) v.scrollTop += e.deltaY;
 		}
-		// ── 留白卡（模块作用域）──────────────────────────────────────────────
-		// ⚠️ 必须定义在这里，不能定义在 ScheduleView 内部：
-		// 父组件每秒都会重渲染（时钟 setNow），定义在里面的组件每次都是**新的函数身份**，
-		// React 会当作另一种组件 → 卸载重建 → useState 被重置 → 悬停暂停当场失效。
-		// 这里同时把隐式依赖的 now 改成显式参数。
-			// ④ 留白区：「按顺序循环」的卡（背景与主体都取该条目自己的强调色）
-			//    大图标当主体；环 = 该档期"已过多少"；下面两行是再往后两件（各两行）。
-			//    数据全部取自条目已有的 startTs/endTs/raw，不需要任何新抓取。
-			//
-			//    ⚠️ 这里曾经写成"纯 CSS 关键帧动画 + DOM 事件钉帧 + 离开时旋转轮次续播 + 0.384s 魔数"，
-			//    起因是我误判"本插件环境 hook 不可靠"（依据只有一次 inline style 为空的观察）。
-			//    实际上插件里 hook 用得很密（GameIcon 75 行就在用 useState/useEffect），
-			//    所以按常规写法重做：**组件内 useState 推进 + 一层 CSS transition**，
-			//    短、可读、无魔数，而且天然满足"悬停停在干净的一帧"（停的就是当前这条，它本来就是 1）。
-			function slotFrac(it, now) {
-				if (!it || typeof it.endTs !== "number") return 0;
-				if (typeof it.startTs === "number" && it.endTs > it.startTs) {
-					return Math.min(1, Math.max(0, (now - it.startTs) / (it.endTs - it.startTs)));
-				}
-				return 0; // 无开始时间（长期/仅知结束）：只画轨道，不假装有进度
-			}
-			function slotLeftDays(it, now) {
-				return Math.max(0, Math.ceil((it.endTs - now) / 86400000));
-			}
-			// 环：底轨道 + 进度弧（rotate -90 让起点在正上方，与 Apple 一致）
-			function slotRing(frac, color, size, stroke) {
-				const r = (size - stroke) / 2;
-				const c = 2 * Math.PI * r;
-				const off = c * (1 - Math.min(1, Math.max(0, frac)));
-				return (0, react_jsx_runtime.jsxs)("svg", { width: size, height: size, viewBox: "0 0 " + size + " " + size, children: [
-					(0, react_jsx_runtime.jsx)("circle", { className: "gacha-cal-slot-track", cx: size / 2, cy: size / 2, r: r, fill: "none", strokeWidth: stroke }),
-					(0, react_jsx_runtime.jsx)("circle", { cx: size / 2, cy: size / 2, r: r, fill: "none", stroke: color, strokeWidth: stroke, strokeLinecap: "round",
-						strokeDasharray: c.toFixed(1), strokeDashoffset: off.toFixed(1), transform: "rotate(-90 " + size / 2 + " " + size / 2 + ")" })
-				] });
-			}
-			// 「再往后两件」一行：小环 + 游戏名一行 / 事项名一行 + 剩余天数
-			function slotLine(it, now) {
-				return (0, react_jsx_runtime.jsxs)("div", { className: "gacha-cal-slot-row", key: it.key, children: [
-					slotRing(slotFrac(it, now), slotAccent(it), 22, 3.4),
-					(0, react_jsx_runtime.jsxs)("span", { className: "gacha-cal-slot-nm", children: [
-						(0, react_jsx_runtime.jsx)("b", { children: (0, react_jsx_runtime.jsx)("span", { className: "gacha-cal-inner", children: it.g.name }) }),
-						(0, react_jsx_runtime.jsx)("i", { children: (0, react_jsx_runtime.jsx)("span", { className: "gacha-cal-inner", children: it.title }) })
-					] }),
-					(0, react_jsx_runtime.jsxs)("span", { className: "gacha-cal-slot-dd", children: [
-						(0, react_jsx_runtime.jsx)("em", { children: String(slotLeftDays(it, now)) }), " 天后结束"
-					] })
-				] });
-			}
-			// ⚠️ 这里**不能**用设置页的覆盖表：slotAccent 定义在 ScheduleView/SlotCard 之外的作用域，
-			//    拿不到 gameColorMap（上一版就是在这里踩了 ReferenceError，面板整块渲染失败）。
-			//    但留白卡的 --g **就是**用户覆盖色：CalendarPanel 已把覆盖色并进条目的 color
-			//    （colorOverrides[g.id] 命中时写 g = { ...g, color: ov }），本函数读 g.color
-			//    ⇒ 覆盖色照样生效。旧注释写"留白卡暂时用出厂色/名字哈希、覆盖色只作用于表格行与设置页"
-			//    与事实相反（真实行为比那更好）。
-			const slotAccent = (it) => scheduleGameColor(it.g);
-			// 档期行：有 raw 才补分隔符；没有开始时间就不显示"已过 0%"（那是假信息）
-			function slotSub(it, frac) {
-				if (typeof it.startTs !== "number") return it.raw || "";
-				return (it.raw ? it.raw + " · " : "") + "已过 " + Math.round(frac * 100) + "%";
-			}
-			const SCHEDULE_SLOT_SECS = 4;
-			// 留白卡本体：普通组件（useState 推进 + useEffect 定时），悬停即不再排下一拍
-			function SlotCard({ list, now }) {
-				const ending = list.filter((x) => x && typeof x.endTs === "number" && x.state !== "long" && x.endTs > now)
-					.sort((a, b) => a.endTs - b.endTs);
-				const slides = ending;                       // 全部按顺序循环（不再限 6 条）
-				const n = slides.length;
-				const [held, setHeld] = (0, react.useState)(false);
-				const cur = useCycle(n, SCHEDULE_SLOT_SECS, held);
-				// 下面三行跟着当前这条走：显示它之后的三个（也就在循环里一起换）；三行正好把卡片垫到与左侧齐平
-				const rows = n > 3 ? [ending[(cur + 1) % n], ending[(cur + 2) % n], ending[(cur + 3) % n]] : [];
-				if (!n) return (0, react_jsx_runtime.jsx)("div", { className: "gacha-cal-sched-slot gacha-cal-sched-slot--empty" });
-				return (0, react_jsx_runtime.jsxs)("div", {
-					className: "gacha-cal-sched-slot",
-					style: { "--gc": slotAccent(slides[0]) },
-					onPointerEnter: () => setHeld(true),
-					onPointerMove: marqMove,
-					onPointerLeave: () => { setHeld(false); marqClear(); },
-					children: [
-						// 背景层：撑满整张卡；颜色 = 该条目的强调色（与表格 --gf 同一套规则）
-						slides.map((it, i) => (0, react_jsx_runtime.jsx)("span", {
-							className: "gacha-cal-slot-bg",
-							key: "bg" + i,
-							"data-t": it.isG ? "gacha" : "event",
-							style: { "--g": slotAccent(it), opacity: i === cur ? 1 : 0 }
-						})),
-						(0, react_jsx_runtime.jsx)("div", { className: "gacha-cal-slot-cine", children: slides.map((it, i) => {
-							const color = slotAccent(it);
-							const frac = slotFrac(it, now);
-							return (0, react_jsx_runtime.jsxs)("div", {
-								className: "gacha-cal-slot-slide",
-								key: "sd" + i,
-								style: { opacity: i === cur ? 1 : 0 },
-								children: [
-									(0, react_jsx_runtime.jsxs)("div", { className: "gacha-cal-slot-ring", children: [
-										slotRing(frac, color, 132, 9),
-										(0, react_jsx_runtime.jsx)("span", { className: "gacha-cal-slot-ic", children: (0, react_jsx_runtime.jsx)(GameIcon, { icon: it.g.icon, name: it.g.name, size: 86 }) })
-									] }),
-									(0, react_jsx_runtime.jsx)("div", { className: "gacha-cal-slot-gn", children: (0, react_jsx_runtime.jsx)("span", { className: "gacha-cal-inner", children: it.g.name }) }),
-									(0, react_jsx_runtime.jsxs)("div", { className: "gacha-cal-slot-days", children: [
-										(0, react_jsx_runtime.jsx)("span", { className: "gacha-cal-slot-n", children: String(slotLeftDays(it, now)) }),
-										(0, react_jsx_runtime.jsx)("span", { className: "gacha-cal-slot-u", children: "天后结束" })
-									] }),
-									(0, react_jsx_runtime.jsx)("div", { className: "gacha-cal-slot-ttl", children: it.title }),
-									(0, react_jsx_runtime.jsx)("div", { className: "gacha-cal-slot-sub", children: (0, react_jsx_runtime.jsx)("span", { className: "gacha-cal-inner", children: slotSub(it, frac) }) })
-								]
-							});
-						}) }),
-						rows.length ? (0, react_jsx_runtime.jsx)("div", { className: "gacha-cal-slot-more", children: rows.map((x) => slotLine(x, now)) }) : null
-					]
-				});
-			}
 		// ── 悬停自动滚动（截断文字不显示省略号，改为来回滚全文）——**由面板自己驱动** ──
 		// 新面板走这里的 React 指针事件（与探头浮层同一套机制）；老面板仍走 90-plugin.js 的
 		// document 级 mouseover/mousemove/mouseout。两条路径在真鼠标（CDP 可信事件）下**都能工作**：
 		// 老面板的 .gacha-cal-cell 悬停会加上 .gacha-cal-marq + --gacha-marq-d（transform 真的在动）；
-		// 新面板「近期」列表的 .gacha-cal-sched-who/.gacha-cal-sched-what 同样生效。
+		// 新面板「清单」列表的 .gacha-cal-sched-who/.gacha-cal-sched-what 同样生效。
+		// （2026-11-01 删掉右侧轮播卡后，.gacha-cal-slot-* 那几个选择器随之删除 —— 那些类已不存在。）
 		// ⚠️ 此前记的"那条 document 路径在本机对真鼠标不响应（手动 dispatchEvent 能加类、真鼠标不能）"
 		//    是当时环境下的**误判**（只用合成事件采样，没走真实鼠标）⇒ 该结论已作废。
 		// 类名/变量沿用老面板那套（CSS 不用动）：
 		//   .gacha-cal-marq .gacha-cal-inner{animation:gacha-cal-marquee 3.5s …}  +  --gacha-marq-d
-		const MARQ_SEL = ".gacha-cal-sched-who, .gacha-cal-sched-what, .gacha-cal-slot-gn, .gacha-cal-slot-sub, .gacha-cal-slot-nm b, .gacha-cal-slot-nm i";
+		const MARQ_SEL = ".gacha-cal-sched-who, .gacha-cal-sched-what";
 		let marqEl = null;
 		function marqClear() {
 			if (marqEl) { marqEl.classList.remove("gacha-cal-marq"); marqEl = null; }
@@ -235,40 +124,50 @@
 				{ label: "7 天内 ", n: within7, tail: " 条" }
 			];
 		}
-		function ScheduleView({ games, now, s, colorMap, refreshing, onRefresh, lastRefreshText, scrapeInfo, scrapeLines, onOpenSettings }) {
+		function ScheduleView({ games, now, s, colorMap, refreshing, onRefresh, lastRefreshText, scrapeInfo, scrapeLines, onMarkChange, onViewChange, onOpenSettings }) {
 			// 每游戏主题色覆盖表（面板侧；设置组件里另有一份同名的）。
-			// ⚠️ 必须在这里也定义一次：下面的行 --g 与留白卡 slotAccent 都在本组件里用它，
+			// ⚠️ 必须在这里也定义一次：游戏表的行 --g 在本组件里用它，
 			//    漏了就是 ReferenceError ⇒ 整个面板（连带插件 UI）挂不上。
 			// T3：改由 CalendarPanel 把**已经解析好的表**传进来（colorMap），消除"同一份 JSON 在
 			//     两个组件各 parse 一次"；colorMap 缺席时才退回自己解析（保持组件可独立使用）。
 			const gameColorMap = colorMap || parseJsonStr(s.gameColors, {});
+			// ── 视图切换（2026-11-01）──────────────────────────────────────────────────
+			// "活动清单 / 游戏日历"二选一：**默认清单**（用户要求），点顶上按钮才切到游戏表。
+			// 纯 UI 状态（不写设置）：关掉面板再开 = 回到默认清单，这也正是用户要的"默认展示左上角列表"。
+			const [view, setView] = (0, react.useState)("list");
+			// 完成 / 忽略的行默认收纳，由顶上两个按钮分别展开。
+			const [showDone, setShowDone] = (0, react.useState)(false);
+			const [showIgnored, setShowIgnored] = (0, react.useState)(false);
+			// 切视图：本地立刻换；再通知父层**复量面板高度**（清单与游戏表高度差很多，
+			// 沿用旧高度会出现"表比壳高 ⇒ 提前出滚动条"或"壳比表高 ⇒ 底部空白"，见 CalendarPanel）。
+			const changeView = (next) => {
+				setView(next);
+				if (onViewChange) onViewChange(next);
+			};
 			// ── 面板搜索（待办第 4 项）：按游戏名 / 卡池名 / 角色名 / 活动名过滤**显示** ──
 			// 纯临时 UI 状态（组件内 useState），**不写设置、不碰 lastData**；空串 = 不过滤。
-			// ⚠️ 只作用于下面这几块显示（表格 / 近期 / 留白卡）：
+			// ⚠️ 只作用于下面这几块显示（清单 / 游戏表）：
 			//    侧栏轮播在 CalendarPanel 里用**未过滤**的 games 算（tickerItems memo），
 			//    提醒更是另一条链路 —— 搜索词一个字节都到不了它们。
 			const [findQuery, setFindQuery] = (0, react.useState)("");
 			// 过滤后的游戏表：空查询时 panelGamesFilter **原样返回同一个数组** ⇒ 下面几个 memo 照旧命中。
 			const shownGames = (0, react.useMemo)(() => panelGamesFilter(games, findQuery), [games, findQuery]);
 			// 每一格（游戏 × 卡池/活动）的候选档期。已结束的**留在格子里**（这一侧没有在期内容时它就是
-			// 这格的代表，图案走斜纹），但不进「近期」—— 近期回答的是"现在该看哪几条"。
-			// ↓↓↓ 纯派生数据（与 CalendarPanel 同理）：4s 一次的「近期」翻页、每分钟时钟、以及任何
-			// 无关设置写入都会让本组件重渲染；这一段原本每次都要逐游戏跑 scheduleNormalize（28×2）
+			// 这格的代表，图案走斜纹），但不进清单 —— 清单回答的是"现在该看哪几条"。
+			// ↓↓↓ 纯派生数据（与 CalendarPanel 同理）：每分钟时钟、以及任何无关设置写入都会让本组件
+			// 重渲染；这一段原本每次都要逐游戏跑 scheduleNormalize（28×2）
 			// ＋悬停文本解析＋失败归类。用 useMemo 按真正输入（games / now）缓存。
 			//   ⚠️ 依赖只写 shownGames / now：本段不再读别的可变输入（主题色不参与，见 gameColorMap 只在下游用）。
-			const { cells, all, failed, failRows, soonCount } = (0, react.useMemo)(() => {
+			const { cells, failed, failRows } = (0, react.useMemo)(() => {
 			const cells = new Map();
-			const all = [];
 			// ⚠️ 遍历的是**搜索过滤后**的 shownGames（空查询时它就是 games 本身）：
-			//    表格 / 近期 / 留白卡因此共用同一份过滤结果；轮播不读这里（见 CalendarPanel）。
+			//    清单 / 游戏表因此共用同一份过滤结果；轮播不读这里（见 CalendarPanel）。
 			for (const g of shownGames) {
 				for (const side of ["gacha", "event"]) {
 					const it = scheduleNormalize(g, side, now);
 					if (!it) continue;                       // 这一侧没有任何数据 → 格子里写"该来源无数据"
 					// 同格并列多条：**外显那条排最前**，其余由悬停文本解析补上（解析不出、或只有一条 → 就只有外显）。
-					// ⚠️ 「近期」只收外显那条（all 的语义不变）—— 大列表改版不动「近期」。
-					const extras = scheduleHoverOnes(
-						scheduleHoverItems(side === "gacha" ? g.bannerHover : g.eventHover, it.title, it.isG), it, now);					// ⚠️ 外显与探头是**同一份列表**（用户 2026-10-16）。引擎给的 roles 是**跨池合并**的角色表
+					// ⚠️ 外显与探头是**同一份列表**（用户 2026-10-16）。引擎给的 roles 是**跨池合并**的角色表
 					// ⚠️ 有并列池时，外显**不能**再显示引擎给的"合并角色表"：
 					//    探头会把每个池连角色再列一遍（原神 = 丝柯克/爱可菲 两个池、鸣潮 = 3 个池各列一遍），
 					//    同一批角色"先合并说一遍、再分池说一遍"正是用户看到的重复 + 粒度混乱。
@@ -278,8 +177,9 @@
 					// ⚠️ 这里曾有一版特例「有并列池就改显池名」（想避免角色名"先说一遍、探头再分池说一遍"），
 					//    但那是与旧面板不一致的**显示规则**，用户 2026-10-16 要求对齐 ⇒ 已删除。
 					//    并列池的角色名在探头里逐池列，重复问题留着不动（显示规则优先与旧面板一致）。
+					const extras = scheduleHoverOnes(
+						scheduleHoverItems(side === "gacha" ? g.bannerHover : g.eventHover, it.title, it.isG), it, now);
 					cells.set(g.id + ":" + side, [it].concat(extras));
-					if (it.state !== "ended") all.push(it);
 				}
 			}
 			const sourceNameOf = (x) => (x.isG ? x.g.source : x.g.eventSource) || "";
@@ -290,41 +190,83 @@
 				const reason = (normalizeFail(x.fail) || {}).reason || "";
 				return x.g.name + " · " + sourceNameOf(x) + (reason ? " " + reason : "") + " —— 该条沿用上次成功数据";
 			});
-			// 「24 小时内」= 未来 24 小时内有**开始或结束**的外显条目：startTs 或 endTs 落在 (now, now+24h]。
-			// 与旧的「今天到期」不同：这里**开始也算**（原来"即将开始"是另一段，现已并进这一格）。
-			// ⚠️ 只数 all（= 每格外显那一条，与「近期」同一份候选）；探头里的并列 extras 不计。
-			// ⚠️ 0 值/哨兵不动手：长期档期（endTs=0 或 2099 那种）自然落在窗口外，不需要额外特判。
-			const nowMs = now.getTime();
-			const soonCount = all.filter((x) => (
-				(x.startTs > nowMs && x.startTs <= nowMs + SCHEDULE_DUE_MS) ||
-				(x.endTs > nowMs && x.endTs <= nowMs + SCHEDULE_DUE_MS)
-			)).length;
-			return { cells, all, failed, failRows, soonCount };
+			return { cells, failed, failRows };
 			}, [shownGames, now]);
-			// ↑↑↑ useMemo 结束（cells / all / 失败归类 / 24 小时计数）
-			// 「近期」= **7 天内有事发生**（到期或开始）；更远的只出现在下方游戏表里
-			// （用户 2026-10-15：不能把 20 多天后的也算近期）。长期/已结束不进近期。
-			const SCHEDULE_NEAR_MS = SCHEDULE_AMBER_MS;
-			// 「近期」默认只列前 10 条（已按紧迫度排序），其余靠每 4 秒换一批（取模环绕）循环看到；
-			// 底部按钮「展开全部 N 条」= React state（nearAll），展开时列全部并停住循环，再点击是「收起」。
-			// ——面板里**没有**「还有 N 条」这个文案，也不再走纯 CSS 的 checkbox。
-			const SCHEDULE_NEAR_LIMIT = 10;
-			const scheduleNear = (x) => (x.state === "wait"
-				? x.startTs != null && x.startTs - now.getTime() <= SCHEDULE_NEAR_MS
-				: x.state === "live" && x.remain <= SCHEDULE_NEAR_MS);
-			// 「近期」列表：只由 all（上面已 memo）+ now 决定（scheduleNear 是纯函数）⇒ 同样缓存。
-			const recent = (0, react.useMemo)(
-				() => all.filter(scheduleNear).sort((a, b) => schedulePickItem(a, b) || (a.g.name < b.g.name ? -1 : a.g.name > b.g.name ? 1 : 0)),
-				[all, now]);
-			// 「近期」循环：每 4 秒整体换一批（每批 SCHEDULE_NEAR_LIMIT 条，末页用取模环绕 ⇒ 永远满 10 条、且能转遍全部）。
-			// 悬停、或点了「展开全部」时都停住 —— 想看全就展开，想停在某批就把鼠标放上去。
-			const [nearHeld, setNearHeld] = (0, react.useState)(false);
-			const [nearAll, setNearAll] = (0, react.useState)(false);
-			const nearPages = Math.max(1, Math.ceil(recent.length / SCHEDULE_NEAR_LIMIT));
-			const nearPage = useCycle(nearPages, SCHEDULE_SLOT_SECS, nearHeld || nearAll);
-			const nearRows = (nearAll || recent.length <= SCHEDULE_NEAR_LIMIT)
-				? recent
-				: Array.from({ length: SCHEDULE_NEAR_LIMIT }, (_, i) => recent[(nearPage * SCHEDULE_NEAR_LIMIT + i) % recent.length]);
+			// ↑↑↑ useMemo 结束（cells / 失败归类）
+			// ── 清单（2026-11-01 改版）：每款游戏的每一口池 / 每一个活动**各占一行** ──
+			// 用户要求：① 默认全展开、不再有「展开全部」；② 每行一个「未完成 / 完成 / 忽略」下拉框；
+			//          ③ 完成 / 忽略的行置灰并默认收纳，由顶部两个按钮展开。
+			// 排序仍按"还要等多久"：在期（越快到期越前）→ 即将开始 → 长期（schedulePickItem 同一把尺）。
+			// 已结束的**不进清单**（它们不是"要做的事"；游戏表里仍以斜纹显示）。
+			// rowKey 给 React 用：markKey 理论上唯一，万一重名就补序号，绝不出现重复 key。
+			const items = (0, react.useMemo)(() => {
+				const out = [];
+				const seen = new Map();
+				for (const list of cells.values()) {
+					for (const x of list) {
+						if (!x || x.state === "ended") continue;
+						const n = (seen.get(x.markKey) || 0) + 1;
+						seen.set(x.markKey, n);
+						out.push({ ...x, rowKey: x.markKey + "#" + n });
+					}
+				}
+				return out.sort(schedulePickItem);
+			}, [cells]);
+			// 处理状态：真源 = 设置里的 itemMarks（JSON 字符串），本地再叠一层**乐观覆盖**。
+			// 为什么要有覆盖层：写入是异步的（scope.set → 宿主表单 → 订阅推送）。下拉框不能"点完又弹回
+			// 未完成"等那一个来回；所以先本地生效，等设置快照追上本次改动再把覆盖项删掉。
+			// 写入失败（返回 false / 抛错）⇒ 撤掉覆盖，界面回到设置里的真实值（绝不假装已保存）。
+			const settingsMarks = (0, react.useMemo)(() => scheduleMarksOf(s.itemMarks), [s.itemMarks]);
+			const [markOverlay, setMarkOverlay] = (0, react.useState)({});
+			(0, react.useEffect)(() => {
+				setMarkOverlay((prev) => {
+					const keys = Object.keys(prev);
+					if (!keys.length) return prev;
+					const next = {};
+					for (const k of keys) {
+						// 设置已经追上这一笔（含"改回未完成"）⇒ 覆盖项可以丢
+						if ((settingsMarks[k] || "") === (prev[k] || "")) continue;
+						next[k] = prev[k];
+					}
+					return Object.keys(next).length === keys.length ? prev : next;
+				});
+			}, [settingsMarks]);
+			const marks = (0, react.useMemo)(() => {
+				const keys = Object.keys(markOverlay);
+				if (!keys.length) return settingsMarks;
+				const out = { ...settingsMarks };
+				for (const k of keys) {
+					if (markOverlay[k]) out[k] = markOverlay[k];
+					else delete out[k];
+				}
+				return out;
+			}, [settingsMarks, markOverlay]);
+			const changeMark = (key, value) => {
+				if (!key) return;
+				const mark = value === "done" || value === "ignored" ? value : "";
+				setMarkOverlay((prev) => ({ ...prev, [key]: mark }));
+				if (!onMarkChange) return;
+				const revert = () => setMarkOverlay((prev) => {
+					const next = { ...prev };
+					delete next[key];
+					return next;
+				});
+				// 父层若同步抛错（scope.set 不可用等），也要走 revert，别让异常冒到 React 事件里。
+				let write;
+				try { write = onMarkChange(key, mark); } catch (err) { write = Promise.reject(err); }
+				Promise.resolve(write).then((ok) => { if (ok === false) revert(); }, revert);
+			};
+			const markPlan = (0, react.useMemo)(() => scheduleMarkPlan(items, marks), [items, marks]);
+			// 「24 小时内 / 7 天内」：只数**还没处理掉**的（标记完成/忽略的不再催），
+			// 并且开始或结束落在窗口内都算（用户口径：开始也算 —— 原来独立的"即将开始"已并进来）。
+			const glanceCounts = (0, react.useMemo)(() => {
+				const nowMs = now.getTime();
+				const hit = (x, ms) => (x.startTs > nowMs && x.startTs <= nowMs + ms) || (x.endTs > nowMs && x.endTs <= nowMs + ms);
+				return {
+					within24: markPlan.pending.filter((x) => hit(x, SCHEDULE_DUE_MS)).length,
+					within7: markPlan.pending.filter((x) => hit(x, SCHEDULE_AMBER_MS)).length
+				};
+			}, [markPlan, now]);
 			// 14 天轴（days）：原本每次渲染都是新数组 ⇒ 会把下面游戏表的 useMemo 依赖打穿（每帧失效）。
 			const days = (0, react.useMemo)(() => scheduleDays(now), [now]);
 			// 日期胶囊：设计稿写「10 月 5 日 · 周日」
@@ -340,13 +282,16 @@
 					children: String(d.getDate())
 				}, i))
 			});
-			// 「近期」一行：图标 / 游戏名 / 类型 / 事项名 / 时间结论
-			const recentRow = (x) => {
+			// 清单一行 = 一款游戏的一口池 / 一个活动（**不再把同游戏的多条聚成一行**）
+			// 右侧下拉框 = 这一条的处理状态；改完立刻写设置（乐观覆盖见上），失败自动退回。
+			const itemRow = (x) => {
 				const w = scheduleWhen(x, now);
+				const mark = scheduleMarkOf(marks, x.markKey);
 				return (0, react_jsx_runtime.jsxs)("div", {
 					className: "gacha-cal-sched-u",
-					key: x.key,
+					key: x.rowKey,
 					"data-u": x.state === "wait" ? "wait" : scheduleUrgency(x),
+					"data-mark": mark || void 0,
 					children: [
 						scheduleIcon("gacha-cal-sched-uic", x.g, 24),
 						(0, react_jsx_runtime.jsx)("span", { className: "gacha-cal-sched-who", children: (0, react_jsx_runtime.jsx)("span", { className: "gacha-cal-inner", children: x.g.name }) }),
@@ -354,10 +299,20 @@
 							scheduleKindIcon(x.isG ? "gacha" : "event", "gacha-cal-sched-tic"),
 							(0, react_jsx_runtime.jsx)("span", { children: x.isG ? "卡池" : "活动" })
 						] }),
-						(0, react_jsx_runtime.jsx)("span", { className: "gacha-cal-sched-what", title: scheduleHoverText(x), children: (0, react_jsx_runtime.jsx)("span", { className: "gacha-cal-inner", children: x.title || x.raw || "—" }) }),
+						(0, react_jsx_runtime.jsx)("span", { className: "gacha-cal-sched-what", title: scheduleHoverText(x), children: (0, react_jsx_runtime.jsx)("span", { className: "gacha-cal-inner", children: x.show || x.title || x.raw || "—" }) }),
 						(0, react_jsx_runtime.jsx)("span", { className: "gacha-cal-sched-when gacha-cal-sched-num", children: w.parts
 							? ["还剩 ", ...w.parts.map((p) => (0, react_jsx_runtime.jsxs)("span", { children: [p[0], (0, react_jsx_runtime.jsx)("small", { children: p[1] })] }, p[1]))]
-							: w.text })
+							: w.text }),
+						// 处理状态下拉框（未完成 / 完成 / 忽略）：选项来自 SCHEDULE_MARKS，
+						// 同一条在"已完成 / 已忽略"两段里也能随时改回来（那两段只是置灰，不是只读）。
+						(0, react_jsx_runtime.jsx)("select", {
+							className: "gacha-cal-sched-mark",
+							value: mark,
+							"aria-label": "标记「" + (x.g.name || "") + " · " + (x.title || x.raw || "") + "」的处理状态",
+							title: "这一条的处理状态：未完成 / 完成 / 忽略",
+							onChange: (e) => changeMark(x.markKey, e.target.value),
+							children: SCHEDULE_MARKS.map((o) => (0, react_jsx_runtime.jsx)("option", { value: o.value, children: o.label }, o.value))
+						})
 					]
 				});
 			};
@@ -454,10 +409,10 @@
 			});
 
 			// 游戏表（28 行 × 每行两格 × 14 格迷你条 ≈ 2000~2600 个 <i>）：内容只由
-			// shownGames / days / cells / 主题色 / now 决定，与「近期」的 4s 翻页、与无关的设置写入**无关**。
+			// shownGames / days / cells / 主题色 / now 决定，与清单的标记状态、与无关的设置写入**无关**。
 			// 这里缓存**元素本身**：React 对同一 element 引用会直接跳过这棵子树的 render + reconcile
-			// （`oldProps === newProps` 的 bailout，与 React.memo 是同一机制）⇒ 4s 翻页不再重算这 2000+
-			// 个格子。**DOM、类名、内联变量（--g/--z）、动画标记与关键帧全部不变**（纯实现层缓存）。
+			// （`oldProps === newProps` 的 bailout，与 React.memo 是同一机制）⇒ 每分钟时钟/搜索之外
+			// 不再重算这 2000+ 个格子。**DOM、类名、内联变量（--g/--z）、动画标记与关键帧全部不变**（纯实现层缓存）。
 			// 依赖必须覆盖 rowOf/cellView 读到的全部输入：shownGames（搜索过滤后的行序/数据，空查询时就是
 			// games）、days（14 天刻度）、cells（每格候选档期，含 now 结果）、gameColorMap（--g）、
 			// now（档期文本/紧迫度）、findQuery（无命中时要换空结果文案）。
@@ -470,10 +425,8 @@
 				[shownGames, days, cells, gameColorMap, now, findQuery]);
 
 			// 「总览」两段的数字（纯函数 scheduleGlanceSegs 决定；**恒为两段**，N/M 是 0 也照写）。
-			// ⚠️ 「7 天内」那段的数字 = recent.length = **就是**「近期」底部按钮「展开全部 N 条」的 N
-			//    （同一份 recent / 同一套 scheduleNear 判定，见上）—— 绝不另写第二套 7 天条件。
-			const glanceSegs = scheduleGlanceSegs(soonCount, recent.length);
-
+			// 口径见 glanceCounts：只数未处理掉的、开始或结束落在窗口内的条目。
+			const glanceSegs = scheduleGlanceSegs(glanceCounts.within24, glanceCounts.within7);
 			return (0, react_jsx_runtime.jsxs)("div", { className: "gacha-cal-sched", children: [
 				// 滚动层：**底栏在它之外**。这样底栏常驻面板下端，而内容在它上沿干净收住，
 				// 不会被底栏"浮在上面切成两半"（sticky 的固有毛病，用户反馈"字都看不清"）。
@@ -492,44 +445,71 @@
 					] }),
 					(0, react_jsx_runtime.jsx)("span", { className: "gacha-cal-sched-sp", children: (0, react_jsx_runtime.jsx)("span", { className: "gacha-cal-sched-pill gacha-cal-sched-pill--live", children: datePill }) })
 				] }),
-				// ③ 「近期」：跨游戏、按紧迫度、全列出；右侧是「下一个截止」卡（见上）
-				(0, react_jsx_runtime.jsxs)("div", { className: "gacha-cal-sched-recent", children: [
-					(0, react_jsx_runtime.jsxs)("div", {
-						className: "gacha-cal-sched-urgent",
-						onPointerEnter: () => setNearHeld(true),
-						onPointerLeave: () => setNearHeld(false),
-						children: recent.length
-						? (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [
-							(0, react_jsx_runtime.jsx)("div", { className: "gacha-cal-sched-nearpg", key: nearAll ? "all" : "p" + nearPage, onPointerMove: marqMove, onPointerLeave: marqClear, children: nearRows.map(recentRow) }),
-							recent.length > SCHEDULE_NEAR_LIMIT
-								? (0, react_jsx_runtime.jsxs)("button", {
-									type: "button",
-									className: "gacha-cal-sched-more",
-									onClick: () => setNearAll((v) => !v),
-									children: [
-										(0, react_jsx_runtime.jsx)("span", { children: nearAll ? "收起" : "展开全部 " + String(recent.length) + " 条" }),
-										nearAll ? null : (0, react_jsx_runtime.jsx)("span", { className: "gacha-cal-sched-page", children: (nearPage + 1) + " / " + String(nearPages) })
-									]
-								})
-								: null
-						] })
-						: (0, react_jsx_runtime.jsx)("div", { className: "gacha-cal-sched-empty", children: "这段时间没有要盯的档期" })
-					}),
-					(0, react_jsx_runtime.jsx)(SlotCard, { list: all, now: now })
+				// ② 工具栏（2026-11-01）：左 = 视图切换（活动清单 / 游戏日历），右 = 「显示已完成 / 显示已忽略」。
+				//    游戏表**默认收起**（用户要求：默认展示左上角清单，点一下才切到下面那张表）。
+				//    两个筛选按钮只属于清单视图 —— 游戏表里没有"完成 / 忽略"这回事，摆在那里只会让人点空。
+				(0, react_jsx_runtime.jsxs)("div", { className: "gacha-cal-sched-bar", children: [
+					(0, react_jsx_runtime.jsxs)("div", { className: "gacha-cal-sched-seg", role: "group", "aria-label": "面板视图", children: [
+						(0, react_jsx_runtime.jsx)("button", {
+							type: "button",
+							"aria-pressed": view === "list" ? "true" : "false",
+							title: "按剩余时间排列的卡池 / 活动清单（每条可标记完成 / 忽略）",
+							onClick: () => changeView("list"),
+							children: "活动清单"
+						}),
+						(0, react_jsx_runtime.jsx)("button", {
+							type: "button",
+							"aria-pressed": view === "table" ? "true" : "false",
+							title: "每个游戏的卡池 / 活动日历（14 天轴）",
+							onClick: () => changeView("table"),
+							children: "游戏日历"
+						})
+					] }),
+					view === "list" ? (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [
+						// 两个按钮的文案按用户要求**逐字**写成「显示已完成 / 显示已忽略」；数量只放 title（不挤按钮）。
+						// aria-pressed = 当前是否展开：读屏用户听到的是"按下 / 未按下"，不是两套不同的名字。
+						(0, react_jsx_runtime.jsx)("button", {
+							type: "button",
+							className: "gacha-cal-sched-flt",
+							"aria-pressed": showDone ? "true" : "false",
+							title: (showDone ? "收起" : "显示") + "「完成」的行（共 " + markPlan.done.length + " 条）",
+							onClick: () => setShowDone((v) => !v),
+							children: "显示已完成"
+						}),
+						(0, react_jsx_runtime.jsx)("button", {
+							type: "button",
+							className: "gacha-cal-sched-flt",
+							"aria-pressed": showIgnored ? "true" : "false",
+							title: (showIgnored ? "收起" : "显示") + "「忽略」的行（共 " + markPlan.ignored.length + " 条）",
+							onClick: () => setShowIgnored((v) => !v),
+							children: "显示已忽略"
+						})
+					] }) : null
 				] }),
-				// ④ 游戏表：**没有区块标题**，列表头直接跟在后面
-				(0, react_jsx_runtime.jsxs)("div", { className: "gacha-cal-sched-tcap", children: [
-					(0, react_jsx_runtime.jsx)("span", { children: "游戏" }),
-					(0, react_jsx_runtime.jsxs)("span", { className: "gacha-cal-sched-th", "data-t": "gacha", children: [scheduleKindIcon("gacha", "gacha-cal-sched-tic"), "卡池"] }),
-					(0, react_jsx_runtime.jsxs)("span", { className: "gacha-cal-sched-th", "data-t": "event", children: [scheduleKindIcon("event", "gacha-cal-sched-tic"), "活动"] })
+				// ③ 清单（默认视图）：**全展开、不折叠**（2026-11-01 删掉「展开全部 N 条」与 4 秒翻页）；
+				//    每行一条（游戏 × 卡池/活动），按剩余时间排序。完成 / 忽略的两段默认收纳在最后。
+				view === "list" ? (0, react_jsx_runtime.jsxs)("div", { className: "gacha-cal-sched-list", onPointerMove: marqMove, onPointerLeave: marqClear, children: [
+					markPlan.pending.length
+						? markPlan.pending.map(itemRow)
+						: (0, react_jsx_runtime.jsx)("div", { className: "gacha-cal-sched-empty", children: "现在没有需要关注的档期" }),
+					showDone && markPlan.done.length ? (0, react_jsx_runtime.jsx)("div", { className: "gacha-cal-sched-sec", children: "已完成 " + markPlan.done.length }) : null,
+					showDone ? markPlan.done.map(itemRow) : null,
+					showIgnored && markPlan.ignored.length ? (0, react_jsx_runtime.jsx)("div", { className: "gacha-cal-sched-sec", children: "已忽略 " + markPlan.ignored.length }) : null,
+					showIgnored ? markPlan.ignored.map(itemRow) : null
+				] }) : (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [
+					// ④ 游戏表（顶上切换按钮的第二个视图）：**没有区块标题**，列表头直接跟在后面
+					(0, react_jsx_runtime.jsxs)("div", { className: "gacha-cal-sched-tcap", children: [
+						(0, react_jsx_runtime.jsx)("span", { children: "游戏" }),
+						(0, react_jsx_runtime.jsxs)("span", { className: "gacha-cal-sched-th", "data-t": "gacha", children: [scheduleKindIcon("gacha", "gacha-cal-sched-tic"), "卡池"] }),
+						(0, react_jsx_runtime.jsxs)("span", { className: "gacha-cal-sched-th", "data-t": "event", children: [scheduleKindIcon("event", "gacha-cal-sched-tic"), "活动"] })
+					] }),
+					// 两栏共用同一根 14 天轴：刻度只画一次（左右各一份，列宽与迷你条完全一致）
+					(0, react_jsx_runtime.jsxs)("div", { className: "gacha-cal-sched-rulerrow", children: [
+						(0, react_jsx_runtime.jsx)("span", {}), ruler(), ruler()
+					] }),
+					(0, react_jsx_runtime.jsx)("div", { className: "gacha-cal-sched-theadline" }),
+					tableJsx
 				] }),
-				// 两栏共用同一根 14 天轴：刻度只画一次（左右各一份，列宽与迷你条完全一致）
-				(0, react_jsx_runtime.jsxs)("div", { className: "gacha-cal-sched-rulerrow", children: [
-					(0, react_jsx_runtime.jsx)("span", {}), ruler(), ruler()
-				] }),
-				(0, react_jsx_runtime.jsx)("div", { className: "gacha-cal-sched-theadline" }),
-				tableJsx,
-
 				// ⑤ 刷新失败横条 + 重试（重试 = 整轮刷新：引擎没有单源刷新接口，见 50-refresh.js）
 				failed.length ? (0, react_jsx_runtime.jsxs)("div", { className: "gacha-cal-sched-failbar", title: failRows.join("\n"), children: [
 					scheduleWarnIcon("gacha-cal-sched-fic"),

@@ -88,7 +88,7 @@ dsh-gacha-calendar/
 │       ├── styles/*.css      # 样式（按原段落注释一个文件；build.mjs 的 CSS_ORDER 拼成产物里的 const STYLE）
 │       ├── 80-shared-ui.js   # 共用小件：设置分区常量 / 打开设置面板 / 下载文本 / 游戏图标 + 预热
 │       ├── 81-schedule-model.js # 新面板排期模型（纯函数）：取色 / 档期窗口 / 悬停文本 / 格式化 / 节拍 hook
-│       ├── 82-schedule-view.js  # 新面板渲染层：轮播节拍 / 探头定位 / 留白卡 / ScheduleView / TickerFlipLines
+│       ├── 82-schedule-view.js  # 新面板渲染层：清单与游戏表 / 探头定位 / ScheduleView / TickerFlipLines
 │       ├── 83-panel-shell.js  # 面板外壳 CalendarPanel：订阅 / 刷新 / ticker 接线（旧表格是它内部的分支）
 │       ├── 84-settings-page.js # 设置页 CalendarSettingsPage + 通知身份 / 测试通知的宿主路由封装
 │       ├── 90-plugin.js      # apply(ctx)：slots / configForms / 悬停 marquee
@@ -386,7 +386,7 @@ DSH 官方只承诺 **Windows + macOS**（Linux 有安装产物，但不作硬�
    （fetch/parse 与渲染分离）；而且 npm 上已有独立包 `gacha-calendar-core`，独立仓库的边际收益低。
    等浏览器扩展真正启动时再评估。
 11. **优化滚动手感**：探头 `position:fixed` 与"原生滚轮"的固有矛盾，属"选了体验优先"的已知取舍。
-12. **留白卡循环长度**：当前循环全部在期条目（约 38 条 ≈ 2.5 分钟一轮），是否限长待定。
+12. ~~**留白卡循环长度**~~：2026-11-01 用户要求删除右侧轮播卡（留白卡），该项随之作废。
 
 13. **AI 协作署名（提交 trailer）** —— **已研究，存档不启用**。
    结论：`Co-Authored-By` 是 GitHub/GitLab **认**的标准 git trailer（提交页显示协作者、计入贡献图；

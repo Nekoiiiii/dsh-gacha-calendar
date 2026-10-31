@@ -1,10 +1,10 @@
 			/* ── 进度条动画 ───────────────────────────────────────────────────────────
-			   迷你条：**填充分段逐格弹出**（缩放 + 淡入，错峰靠 nth-child 造出波浪感）；
-			   卡片环：整体轻微放大淡入。
-			   ⚠️ 只作用在**叶子**元素上（i / 环本身都不含探头）⇒ 不影响 position:fixed 探头的包含块；
+			   迷你条：**填充分段逐格弹出**（缩放 + 淡入，错峰靠 nth-child 造出波浪感）。
+			   （2026-11-01 删掉右侧轮播卡后，卡片环 / 「再往后两件」两行的环动画与 ring-in keyframes 一并删除。）
+			   ⚠️ 只作用在**叶子**元素上（i 不含探头）⇒ 不影响 position:fixed 探头的包含块；
 			      且一律 animation-fill-mode: backwards（跑完回归自然态、不留动画标记，避免独立合成层改变绘制顺序）。 */
 			@keyframes gacha-cal-bar-in{from{opacity:0;transform:scaleY(0)}60%{opacity:1}to{opacity:1;transform:none}}
-			@keyframes gacha-cal-ring-in{from{opacity:0;transform:scale(.92)}to{opacity:1;transform:none}}
+
 			/* ⚠️ 延迟必须**晚于**表格行的淡入（行是 .10~.28s + .32s）：
 			   上一版条动画放在 .12~.24s，正好压在行还没显现的时候 ⇒ 用户看到的是"完全没有动画"。
 			   现在从 .45s 起、按格号拉开到 .69s，且幅度拉满（scaleY 0→1 + 淡入）⇒ 明显的从左到右灌满。 */
@@ -26,11 +26,5 @@
 			.gacha-cal-sched-tl i[data-f]:nth-child(12){animation-delay:.77s}
 			.gacha-cal-sched-tl i[data-f]:nth-child(13){animation-delay:.8s}
 			.gacha-cal-sched-tl i[data-f]:nth-child(14){animation-delay:.83s}
-			.gacha-cal-slot-ring{animation:gacha-cal-ring-in .5s cubic-bezier(.2,.9,.25,1.06) backwards;animation-delay:.34s}
-			/* 卡片里「再往后两件」每行的小进度环（22px，无 class，按结构选中）：逐个浮现。
-			   实测这三行的 svg 原本 animationName = none —— 用户反馈的"进度条动画不完整"就是它。 */
-			.gacha-cal-slot-row svg{animation:gacha-cal-ring-in .42s cubic-bezier(.2,.9,.25,1.06) backwards}
-			.gacha-cal-slot-row:nth-child(1) svg{animation-delay:.24s}
-			.gacha-cal-slot-row:nth-child(2) svg{animation-delay:.28s}
-			.gacha-cal-slot-row:nth-child(3) svg{animation-delay:.32s}
-			@media (prefers-reduced-motion:reduce){.gacha-cal-sched-tl i[data-f],.gacha-cal-slot-ring,.gacha-cal-slot-row svg{animation:none}}
+
+			@media (prefers-reduced-motion:reduce){.gacha-cal-sched-tl i[data-f]{animation:none}}

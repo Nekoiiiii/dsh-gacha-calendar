@@ -108,6 +108,11 @@
 			healthCheckedAt: 0,
 			// 每游戏主题色覆盖：{ id: "#rrggbb" }（空 = 用出厂色 / 名字哈希），由设置页的取色器写入
 			gameColors: "{}",
+			// 面板清单每行的处理状态（JSON：{ [markKey]: "done" | "ignored" }，见 81-schedule-model.js 的
+			// scheduleMarkKeyOf / scheduleMarksOf）：只有「完成 / 忽略」才写，未完成 = 键不存在。
+			// 这个键必须同时出现在 engine-head.js 的 CONFIG_KEYS 与 src/index.js 的 schema 里
+			// （守卫见 test/cases-rule-lint.mjs）。
+			itemMarks: "{}",
 			// 不展示的条目 id 列表（设置页开关）；出厂默认隐藏见条目的 `defaultHidden` 字段
 			hidden: [],
 			// 用户**明确打开**的条目 id 列表 —— 用来覆盖条目的出厂 `defaultHidden`。
@@ -2247,6 +2252,10 @@ export function createEngine(env) {
 			//    防回归见 test/cases-rule-lint.mjs 的「DEFAULT_SETTINGS 的键必须都在 CONFIG_KEYS 里」。
 			const CONFIG_KEYS = [
 				"order", "hidden", "shown", "removed", "customEntries", "customUrls", "customEventUrls", "gameColors",
+				// itemMarks：面板清单每行的处理状态（JSON 字符串，{ markKey: "done" | "ignored" }）。
+				// 引擎不消费它（面板直接读写），但它是 DEFAULT_SETTINGS 的键 ⇒ 必须在这里，
+				// 否则 test/cases-rule-lint.mjs 的「配置键成套」会红。
+				"itemMarks",
 				// newPanel：实验特性「新日程面板」开关（默认 true）。**别漏**——漏了就是 2026-10-03 那个
 				// 「勾了不生效」的复刻：设置页写进表单、面板却读不到。守卫见 test/cases-rule-lint.mjs。
 				// newPanelMigrated：宿主一次性迁移标记（默认 false），引擎不消费它，但按约定列在这里

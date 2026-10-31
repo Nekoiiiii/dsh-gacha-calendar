@@ -45,58 +45,6 @@
 			.gacha-cal-sched b,.gacha-cal-sched strong{font-weight:500}
 			.gacha-cal-sched-glance,.gacha-cal-sched-tcap,.gacha-cal-sched-foot{letter-spacing:.02em}
 			.gacha-cal-sched-when,.gacha-cal-sched-uic,.gacha-cal-sched-when b{font-variant-numeric:tabular-nums}
-			/* ── 留白区：「下一个截止」卡 ──
-			   大图标当主体；环 = 该档期"已过多少"（环快满 = 快结束了，不用读字）；
-			   下面两行是接下来两件，各两行（游戏名一行 / 卡池活动名一行）。 */
-			.gacha-cal-sched-slot{box-sizing:border-box;position:relative;min-width:0;display:flex;flex-direction:column;align-self:flex-start;padding:12px 13px 11px;overflow:hidden;border:1px solid var(--dsw-alias-border-l1,rgba(127,127,127,.22));border-radius:22px;
-				background:radial-gradient(120% 90% at 78% 0%,color-mix(in oklab,var(--gc,#888) 24%,transparent) 0%,transparent 62%),
-					linear-gradient(180deg,color-mix(in oklab,var(--gc,#888) 10%,var(--dsw-alias-bg-base,#fff)) 0%,var(--dsw-alias-bg-base,#fff) 78%);
-				box-shadow:0 1px 2px rgba(0,0,0,.06),0 8px 24px -12px rgba(0,0,0,.22)}
-			.gacha-cal-sched-slot--empty{border-style:dashed}
-			.gacha-cal-slot-cine{display:grid;grid-template-columns:minmax(0,1fr)}
-			.gacha-cal-slot-cine > *{grid-area:1/1}
-			.gacha-cal-slot-ring{position:relative;width:132px;height:132px;margin:2px auto 0;flex:0 0 auto}
-			.gacha-cal-slot-ring svg{display:block}
-			.gacha-cal-slot-track{stroke:color-mix(in oklab,var(--dsw-alias-label-primary,#1f2329) 13%,transparent)}
-			.gacha-cal-slot-ic{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
-			.gacha-cal-slot-ic > *{width:86px !important;height:86px !important;border-radius:22px !important}
-			.gacha-cal-slot-gn{margin-top:11px;text-align:center;font-size:13.5px;font-weight:600;letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--dsw-alias-label-primary,#1f2329)}
-			.gacha-cal-slot-days{display:flex;align-items:baseline;justify-content:center;margin-top:1px}
-			.gacha-cal-slot-n{font-size:34px;font-weight:600;letter-spacing:-.018em;line-height:1;font-variant-numeric:proportional-nums;color:var(--dsw-alias-label-primary,#1f2329)}
-			.gacha-cal-slot-u{margin-left:5px;font-size:12px;font-weight:400;letter-spacing:.04em;color:var(--dsw-alias-label-secondary,#4a5261)}
-			.gacha-cal-slot-ttl{box-sizing:border-box;max-width:100%;margin-top:6px;text-align:center;font-size:12.5px;font-weight:400;letter-spacing:.012em;color:var(--dsw-alias-label-secondary,#4a5261);
-				white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-			.gacha-cal-slot-sub{margin-top:3px;text-align:center;font-size:10.5px;font-weight:400;letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--dsw-alias-label-tertiary,#6b7280);
-				font-variant-numeric:tabular-nums}
-			.gacha-cal-slot-more{position:relative;z-index:2;margin-top:auto;padding-top:8px;border-top:1px solid color-mix(in oklab,var(--dsw-alias-label-primary,#1f2329) 8%,transparent);display:grid;gap:9px}
-			.gacha-cal-slot-row{display:grid;grid-template-columns:22px minmax(0,1fr) auto;align-items:center;gap:8px}
-			.gacha-cal-slot-nm{min-width:0;font-size:12.5px;font-weight:600;letter-spacing:.02em;color:var(--dsw-alias-label-primary,#1f2329)}
-			.gacha-cal-slot-nm b{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-			.gacha-cal-slot-nm i{display:block;margin-top:1px;font-style:normal;font-size:11.5px;font-weight:400;letter-spacing:.012em;color:var(--dsw-alias-label-tertiary,#6b7280);
-				white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-			.gacha-cal-slot-dd{font-size:10.5px;font-weight:400;letter-spacing:.02em;color:var(--dsw-alias-label-tertiary,#6b7280);font-variant-numeric:tabular-nums}
-			.gacha-cal-slot-dd em{font-style:normal;font-weight:600;color:var(--dsw-alias-label-primary,#1f2329)}
-			/* ── 留白卡：「按顺序循环」（条数不限 = 当前在期且带结束时间的全部条目 / 每格 4 秒 /
-			   一轮 = 条数 × 4 秒，随数据变化，不是固定时长）──
-			   背景层硬切（两层交叉淡入会透出杂色），主体层软淡入（文字不闪）。
-			   ⚠️ 循环**不是**纯 CSS：这里没有关键帧定时器，节奏由组件里的 useCycle
-			   （useState + setInterval）驱动，hover 暂停也由组件处理 —— 这一段只管外观。
-			   prefers-reduced-motion 只去掉淡入（.gacha-cal-slot-slide 的 transition:none），循环本身照旧。 */
-			.gacha-cal-slot-bg{position:absolute;inset:0;z-index:0;opacity:0;
-				background:radial-gradient(120% 90% at 78% 0%,color-mix(in oklab,var(--gc,#888) 24%,transparent) 0%,transparent 62%),
-					linear-gradient(180deg,color-mix(in oklab,var(--gc,#888) 10%,var(--dsw-alias-bg-base,#fff)) 0%,var(--dsw-alias-bg-base,#fff) 78%);
-				}
-			.gacha-cal-slot-bg[data-t="gacha"]{--gc:var(--g)}
-			.gacha-cal-slot-bg[data-t="event"]{--gc:color-mix(in oklab,var(--g) 42%,#fff)}
-			.gacha-cal-slot-slide{position:relative;z-index:1;opacity:0;transition:opacity .38s cubic-bezier(.4,0,.2,1)}
-			.gacha-cal-slot-cine{position:relative;z-index:1}
-
-
-			/* 悬停暂停由组件处理（useState + 清掉定时器）：停的就是当前那条，它本来就是全不透明，
-			   所以不写 :hover 或关键帧 —— 不依赖任何"此刻动画值"，也就不会留下半透明鬼影。 */
-			@media (prefers-reduced-motion:reduce){
-				.gacha-cal-slot-slide{transition:none}
-			}
 			.gacha-cal-sched-foot > span{flex:1 1 0;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 			/* 刷新按钮（2026-10-31 二改：**纯图标圆按钮**，去掉文字后与右侧齿轮同一形态）：
 			   · 20×20，与 .gacha-cal-sched-gear 同尺寸 —— 点击区不会因为去掉文字而变小
@@ -124,20 +72,6 @@
 			.gacha-cal-sched-gear:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(127,127,127,.1));color:var(--dsw-alias-label-primary,#1f2329)}
 			.gacha-cal-sched-gear:focus-visible{outline:none;border-color:var(--dsw-alias-link,#3b5bfd)}
 			.gacha-cal-sched-empty{padding:12px 8px;text-align:center;font-size:11.5px;color:var(--dsw-alias-label-tertiary,#6b7280)}
-			/* ── 「近期」每 4 秒循环换一批（每批 10 条）+「展开全部」──
-			   状态与定时都在组件里（useCycle）；这里只负责外观。换页时整批淡入（key 变化触发重挂载）。
-			   不做高度动画（避免重排）。 */
-			.gacha-cal-sched-more{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;margin-top:6px;padding:5px 8px;border:none;background:transparent;border-radius:10px;
-				font-family:inherit;font-size:11px;font-weight:500;letter-spacing:.02em;color:var(--dsw-alias-label-tertiary,#6b7280);cursor:pointer;user-select:none}
-			.gacha-cal-sched-more:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(127,127,127,.1));color:var(--dsw-alias-label-secondary,#4a5261)}
-			.gacha-cal-sched-page{font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-tertiary,#9aa1ab)}
-			.gacha-cal-sched-more:focus-visible{outline:2px solid var(--dsw-alias-link,#3b5bfd);outline-offset:2px}
-			/* 这两条原先用 fill-mode: **both** —— 与全局约定（一律 backwards）不一致：
-			   both 的 forwards 半边让元素永久挂着动画标记 ⇒ Chromium 给独立合成层 ⇒ 改绘制顺序，
-			   正是当初"探头被表格行盖住"的同一机制（审计 F3）。 */
-			.gacha-cal-sched-nearpg{animation:gacha-cal-near-in .38s cubic-bezier(.4,0,.2,1) backwards}
-			@keyframes gacha-cal-near-in{from{opacity:0}to{opacity:1}}
-			.gacha-cal-slot-row{animation:gacha-cal-near-in .38s cubic-bezier(.4,0,.2,1) backwards}
 			/* marquee（悬停时截断文字来回滚）与刷新转圈都是无限循环动画 ⇒ 补进"减少动态效果"的关闭列表：
 			   原先 4 个 reduce 块都没有它们，开了系统开关的用户仍会看到文字滚动 / 转圈（审计 F4）。
 			   ⚠️ B4a：设置页那条 marquee 规则选择器是 **.gacha-cal-settings-name.gacha-cal-marq
@@ -148,7 +82,7 @@
 			   只把 animation 置 none；名称/时长/延迟/缓动/作用目标与非 reduce 行为一律不动。
 			   ⚠️ 2026-10-31 二改：底栏刷新按钮去了文字，忙碌态改成 .gacha-cal-sched-btn.is-busy svg
 			   的 1s 无限旋转（keyframes 在 animations.css）—— 同样是无限循环，必须一起关。 */
-			@media (prefers-reduced-motion:reduce){.gacha-cal-sched-nearpg,.gacha-cal-slot-row,.gacha-cal-marq .gacha-cal-inner,.gacha-cal-settings-name.gacha-cal-marq .gacha-cal-inner,.gacha-cal-spin,.gacha-cal-sched-btn.is-busy svg{animation:none}}
+			@media (prefers-reduced-motion:reduce){.gacha-cal-marq .gacha-cal-inner,.gacha-cal-settings-name.gacha-cal-marq .gacha-cal-inner,.gacha-cal-spin,.gacha-cal-sched-btn.is-busy svg{animation:none}}
 		
 
 

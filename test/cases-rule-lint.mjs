@@ -18,7 +18,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { check, section } from "./harness.mjs";
-import { readComponentsSource, readParserSharedSource, PARSER_FILES } from "./load.mjs";
+import { readComponentsSource, readParserSharedSource, readStylesSource, PARSER_FILES, T } from "./load.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.resolve(HERE, "..", "src", "client");
@@ -445,5 +445,86 @@ export default async function run() {
 			&& /if \(stale\) \{/.test(body)
 			&& /return dates \? dates \+ \(notes\.length/.test(body)),
 			`from=${from} to=${to} pushes=${(body.match(/notes\.push\(/g) || []).length}`);
+	}
+
+	// ── 新面板清单的「完成 / 忽略」标记（2026-11-01）────────────────────────────────
+	// 用户要求：清单**每行**一个下拉框（未完成 / 完成 / 忽略）；完成 / 忽略的行置灰并**默认收纳**，
+	// 顶部两个按钮（显示已完成 / 显示已忽略）点了才展开；清单默认视图 = 全展开的清单（游戏表收进切换里）。
+	// 这里钉三类**能被机器判定**的事实：
+	//   ① 配置键三处齐（DEFAULT_SETTINGS / CONFIG_KEYS / 宿主 schema 且 .volatile()）——
+	//      漏一处就是"改了不保存"或"保存了读不到"（历史上 shown 就这么漏过，见上面的守卫注释）；
+	//   ② 纯函数行为（窗口进 key / 坏 JSON 不炸 / 三段分组）——标记是按 key 落盘的，key 不稳就会错乱；
+	//   ③ 渲染层接线（三个选项、两个按钮、默认收起、默认清单视图；删掉的轮播卡不许复活）。
+	{
+		const srcText = (rel) => readFileSync(path.join(SRC, rel), "utf8");
+		const cfgText = srcText("10-config.js");
+		const ehText = srcText("engine-head.js");
+		const hostText = readFileSync(path.join(SRC, "..", "index.js"), "utf8");
+		check("DEFAULT_SETTINGS 有 itemMarks（默认 \"{}\" = 全部未完成）", /itemMarks: "\{\}"/.test(cfgText));
+		check("引擎 CONFIG_KEYS 有 itemMarks（配置键成套）", /"itemMarks"/.test(ehText));
+		check("宿主 schema 有 itemMarks 且 .volatile()（否则面板写入会被拒）",
+			/itemMarks: z\.string\(\)\.default\("\{\}"\)\.volatile\(\)/.test(hostText));
+
+		const { scheduleMarkKeyOf, scheduleMarksOf, scheduleMarkOf, scheduleMarkPlan } = T;
+		check("四个标记纯函数都从 81-schedule-model.js 导出",
+			[scheduleMarkKeyOf, scheduleMarksOf, scheduleMarkOf, scheduleMarkPlan].every((f) => typeof f === "function"));
+		const k1 = scheduleMarkKeyOf("genshin", "gacha", "「浮生孰来」祈愿", 1000, 2000, "");
+		check("markKey 对同一期稳定（同输入恒等）",
+			k1 === scheduleMarkKeyOf("genshin", "gacha", "「浮生孰来」祈愿", 1000, 2000, ""));
+		check("markKey 含**窗口**：同一标题的下一期复刻是另一条任务（不继承上一期的完成）",
+			k1 !== scheduleMarkKeyOf("genshin", "gacha", "「浮生孰来」祈愿", 3000, 4000, ""));
+		check("markKey 在不同游戏 / 不同侧之间不撞（游戏 id + 卡池/活动侧都在 key 里）",
+			k1 !== scheduleMarkKeyOf("hsr", "gacha", "「浮生孰来」祈愿", 1000, 2000, "")
+			&& k1 !== scheduleMarkKeyOf("genshin", "event", "「浮生孰来」祈愿", 1000, 2000, ""));
+		check("读不出绝对档期时退回源站原文（不会拼出 undefined / 0-0）",
+			scheduleMarkKeyOf("x", "event", "海灯节", 0, 0, "01-01 00:00 ~ 01-10 00:00") ===
+				["x", "event", "海灯节", "01-01 00:00 ~ 01-10 00:00"].join("\u0001"));
+		const marks = scheduleMarksOf('{"a":"done","b":"ignored","c":"whatever","d":"","e":1}');
+		check("scheduleMarksOf 只保留 done / ignored（脏值 / 空串一律当未完成）",
+			marks.a === "done" && marks.b === "ignored"
+			&& !("c" in marks) && !("d" in marks) && !("e" in marks));
+		check("坏 JSON / null / 数组都安全（空表，不抛）",
+			Object.keys(scheduleMarksOf("{oops")).length === 0
+			&& Object.keys(scheduleMarksOf(null)).length === 0
+			&& Object.keys(scheduleMarksOf("[1]")).length === 0);
+		check("scheduleMarkOf：缺键 = 未完成（空串），命中就回原值",
+			scheduleMarkOf(marks, "zzz") === "" && scheduleMarkOf(marks, "a") === "done" && scheduleMarkOf(marks, "b") === "ignored");
+		const plan = scheduleMarkPlan([{ markKey: "a" }, { markKey: "b" }, { markKey: "c" }], marks);
+		check("scheduleMarkPlan 三段分组且保持入参顺序（未完成 / 完成 / 忽略）",
+			plan.pending.length === 1 && plan.pending[0].markKey === "c"
+			&& plan.done.length === 1 && plan.done[0].markKey === "a"
+			&& plan.ignored.length === 1 && plan.ignored[0].markKey === "b");
+
+		const comp = readComponentsSource();
+		check("每行下拉框的三个选项文案 = 未完成 / 完成 / 忽略",
+			/SCHEDULE_MARKS = \[/.test(comp) && /label: "未完成"/.test(comp)
+			&& /label: "完成"/.test(comp) && /label: "忽略"/.test(comp)
+			&& /SCHEDULE_MARKS\.map\(/.test(comp) && /className: "gacha-cal-sched-mark"/.test(comp));
+		check("下拉框把选择写回设置（changeMark → onMarkChange），不是只改本地 state",
+			/onChange: \(e\) => changeMark\(x\.markKey, e\.target\.value\)/.test(comp)
+			&& /onMarkChange\(key, mark\)/.test(comp)
+			&& /onMarkChange: setItemMark/.test(comp));
+		check("顶部两个按钮文案逐字 = 显示已完成 / 显示已忽略",
+			/children: "显示已完成"/.test(comp) && /children: "显示已忽略"/.test(comp));
+		check("完成 / 忽略默认收纳（两个开关初值 false，渲染以它们为条件）",
+			/const \[showDone, setShowDone\] = \(0, react\.useState\)\(false\)/.test(comp)
+			&& /const \[showIgnored, setShowIgnored\] = \(0, react\.useState\)\(false\)/.test(comp)
+			&& /showDone && markPlan\.done\.length/.test(comp)
+			&& /showIgnored && markPlan\.ignored\.length/.test(comp));
+		check("默认视图 = 清单（游戏表收进切换按钮里，用户要求默认看左上角列表）",
+			/const \[view, setView\] = \(0, react\.useState\)\("list"\)/.test(comp)
+			&& /view === "list" \?/.test(comp) && /children: "活动清单"/.test(comp) && /children: "游戏日历"/.test(comp));
+		check("清单按**每一条**展开（不再只收每格外显那一条）：cells 的全部条目摊平后排序",
+			/for \(const list of cells\.values\(\)\)[\s\S]{0,200}?out\.push\(\{ \.\.\.x, rowKey/.test(comp)
+			&& /out\.sort\(schedulePickItem\)/.test(comp));
+		check("右侧轮播卡 / 「展开全部」翻页已删除（用户 2026-11-01 要求）",
+			!/SlotCard|gacha-cal-sched-slot|gacha-cal-sched-more|gacha-cal-sched-nearpg|setNearAll/.test(comp));
+		const styles = readStylesSource();
+		check("置灰样式真的存在（清单行 data-mark ⇒ opacity）",
+			/\.gacha-cal-sched-u\[data-mark\]\{opacity:\.5\}/.test(styles));
+		check("工具栏 / 分段切换 / 筛选按钮的样式不是死代码",
+			styles.includes(".gacha-cal-sched-bar{") && styles.includes(".gacha-cal-sched-seg{")
+			&& styles.includes(".gacha-cal-sched-flt{") && styles.includes(".gacha-cal-sched-sec{")
+			&& styles.includes(".gacha-cal-sched-mark{"));
 	}
 }

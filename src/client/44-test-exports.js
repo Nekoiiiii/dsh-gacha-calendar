@@ -387,6 +387,17 @@
 			//   失败 ⇒ sideFailText 的既有文案（+「日期为沿用旧值」）；沿用旧值 ⇒「数据来自上次成功抓取 X 前」；
 			//   该侧没有数据 ⇒「（无数据）」。导出后四种情况都能用固定 now 逐字断言（见 cases-tz.mjs ⑤）。
 			scheduleDateHover,
+			// 面板清单的「处理状态」（2026-11-01，81-schedule-model.js）：
+			//   scheduleMarkKeyOf = 一条档期的存储键（游戏 + 侧 + 标题 + **这一期的窗口**）；
+			//   scheduleMarksOf   = 设置里 itemMarks 的 JSON → 只留合法状态（坏 JSON / 脏值当没有）；
+			//   scheduleMarkOf    = 单条读取（缺键 = 未完成，空串）；
+			//   scheduleMarkPlan  = 按状态切成 未完成 / 完成 / 忽略 三段（面板按这个顺序渲染）。
+			// 都是函数声明、同作用域提升 ⇒ 这里可提前引用；导出后可用固定条目逐条断言
+			// （见 cases-rule-lint.mjs 的「清单处理状态」一节）。
+			scheduleMarkKeyOf,
+			scheduleMarksOf,
+			scheduleMarkOf,
+			scheduleMarkPlan,
 			// 到期判定的纯函数（固定时刻可测）。dueWindowOf / tickerItemsOf 在 81-schedule-model.js，
 			// 负责"落盘文本 + tz → 绝对窗口"；同属函数声明、同作用域提升 ⇒ 这里可提前引用。
 			isExpiringSoon,
